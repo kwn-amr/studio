@@ -4,9 +4,9 @@
 import * as React from 'react';
 import type { TreeNodeData } from '@/types';
 import { TreeNode } from './TreeNode';
-import { D3SubjectGraph } from './D3SubjectGraph'; // Changed import
+import { D3SubjectGraph } from './D3SubjectGraph';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
+import { Download, FileText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,6 +32,33 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: Subjec
     URL.revokeObjectURL(url);
   };
 
+  const generateMarkdown = (node: TreeNodeData, level = 0): string => {
+    let markdown = `${'  '.repeat(level)}- ${node.name}\n`;
+    if (node.children && node.children.length > 0) {
+      for (const child of node.children) {
+        markdown += generateMarkdown(child, level + 1);
+      }
+    }
+    return markdown;
+  };
+
+  const handleExportMarkdown = () => {
+    if (!treeData) return;
+    let markdownString = `# Subject Tree for: ${fieldOfStudy || 'Unnamed Subject'}\n\n`;
+    markdownString += generateMarkdown(treeData);
+    
+    const blob = new Blob([markdownString], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${fieldOfStudy ? fieldOfStudy.toLowerCase().replace(/\s+/g, '_') : 'subject'}_tree.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+
   const commonHeightClass = "h-[calc(100vh-22rem)] md:h-[calc(100vh-16rem)]";
 
   return (
@@ -41,10 +68,16 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: Subjec
           {fieldOfStudy ? `Subject Map for ${fieldOfStudy}` : 'Subject Map'}
         </CardTitle>
         {treeData && !isLoading && (
-          <Button variant="outline" size="sm" onClick={handleExportJson} className="ml-auto">
-            <Download className="mr-2 h-4 w-4" />
-            Export JSON
-          </Button>
+          <div className="flex items-center gap-2 ml-auto">
+            <Button variant="outline" size="sm" onClick={handleExportMarkdown}>
+              <FileText className="mr-2 h-4 w-4" />
+              Markdown
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportJson}>
+              <Download className="mr-2 h-4 w-4" />
+              JSON
+            </Button>
+          </div>
         )}
       </CardHeader>
       <CardContent className="flex-grow p-0 flex flex-col">
@@ -71,7 +104,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: Subjec
               </ScrollArea>
             </TabsContent>
             <TabsContent value="graph" className={`flex-grow overflow-hidden ${commonHeightClass}`}>
-              <D3SubjectGraph treeData={treeData} />
+              <D3SubjectGraph treeData={treeData} fieldOfStudy={fieldOfStudy || 'subject'} />
             </TabsContent>
           </Tabs>
         )}

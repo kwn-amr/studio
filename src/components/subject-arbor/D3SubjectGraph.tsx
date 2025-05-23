@@ -4,9 +4,13 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import type { TreeNodeData } from '@/types';
+import { Button } from '@/components/ui/button';
+import { ImageIcon, Minimize, Maximize } from 'lucide-react';
+import { toPng } from 'html-to-image';
 
 interface D3SubjectGraphProps {
   treeData: TreeNodeData | null;
+  fieldOfStudy: string;
 }
 
 interface D3HierarchyNode extends d3.HierarchyPointNode<TreeNodeData> {
@@ -17,58 +21,60 @@ interface D3HierarchyNode extends d3.HierarchyPointNode<TreeNodeData> {
   id?: string;
 }
 
-
-export function D3SubjectGraph({ treeData }: D3SubjectGraphProps) {
+export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const graphWrapperRef = useRef<HTMLDivElement>(null); // For PNG export and sizing
+
+  const [isFullyExpanded, setIsFullyExpanded] = useState(false);
   
-  // Use a ref for D3 related state that doesn't need to trigger re-renders directly
   const d3State = useRef<{
     svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null;
     g: d3.Selection<SVGGElement, unknown, null, undefined> | null;
     root: D3HierarchyNode | null;
     treeLayout: d3.TreeLayout<TreeNodeData> | null;
     zoomBehavior: d3.ZoomBehavior<SVGSVGElement, unknown> | null;
-    i: number; // for node ids
+    i: number; 
     dimensions: { width: number; height: number };
   }>({ svg: null, g: null, root: null, treeLayout: null, zoomBehavior: null, i: 0, dimensions: {width: 0, height: 0}});
 
   const animationDuration = 750;
-  const nodeRadius = 6; // Can be sourced from CSS variable if needed dynamically
+  const nodeRadius = 6; 
 
   const getContainerDimensions = useCallback(() => {
-    if (svgRef.current?.parentElement) {
-      const parent = svgRef.current.parentElement;
+    if (graphWrapperRef.current) {
+      const parent = graphWrapperRef.current;
       return {
         width: parent.clientWidth,
         height: parent.clientHeight,
       };
     }
-    return { width: 600, height: 400 }; // Default fallback
+    return { width: 600, height: 400 }; 
   }, []);
 
   const updateChart = useCallback((sourceNode?: D3HierarchyNode) => {
     if (!d3State.current.g || !d3State.current.root || !d3State.current.treeLayout || !tooltipRef.current) return;
 
     const { width, height } = d3State.current.dimensions;
-    const margin = { top: 20, right: 120, bottom: 20, left: 120 };
+    const margin = { top: 20, right: 120, bottom: 20, left: 120 }; // Adjusted for controls potentially
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
+
+    if (innerWidth <=0 || innerHeight <=0) return; // Avoid errors on tiny containers
 
     const g = d3State.current.g;
     const rootNode = d3State.current.root;
     const treeLayout = d3State.current.treeLayout.size([innerHeight, innerWidth]);
     const tooltip = d3.select(tooltipRef.current);
 
-    const treeData = treeLayout(rootNode);
-    const nodes = treeData.descendants() as D3HierarchyNode[];
-    const links = treeData.links() as d3.Link<unknown, D3HierarchyNode, D3HierarchyNode>[];
+    const treeDataLayout = treeLayout(rootNode); // treeLayout(rootNode) not treeData
+    const nodes = treeDataLayout.descendants() as D3HierarchyNode[];
+    const links = treeDataLayout.links() as d3.Link<unknown, D3HierarchyNode, D3HierarchyNode>[];
 
     nodes.forEach(d => { d.y = d.depth * 180; });
 
     const effectiveSource = sourceNode || rootNode;
 
-    // Nodes
     const node = g.selectAll<SVGGElement, D3HierarchyNode>('g.node')
       .data(nodes, d => d.id || (d.id = (++d3State.current.i).toString()));
 
@@ -119,13 +125,12 @@ export function D3SubjectGraph({ treeData }: D3SubjectGraphProps) {
 
     const nodeExit = node.exit().transition()
       .duration(animationDuration)
-      .attr('transform', `translate(${effectiveSource.y},${effectiveSource.x})`)
+      .attr('transform', `translate(${effectiveSource.y || 0},${effectiveSource.x || 0})`) // Ensure source.y and source.x are defined
       .remove();
 
     nodeExit.select('circle').attr('r', 1e-6);
     nodeExit.select('text').style('fill-opacity', 1e-6);
 
-    // Links
     const link = g.selectAll<SVGPathElement, d3.Link<unknown, D3HierarchyNode, D3HierarchyNode>>('path.link')
       .data(links, d => d.target.id!);
 
@@ -133,7 +138,7 @@ export function D3SubjectGraph({ treeData }: D3SubjectGraphProps) {
       .attr('class', 'link')
       .attr('d', () => {
         const o = { x: effectiveSource.x0 || effectiveSource.x || 0, y: effectiveSource.y0 || effectiveSource.y || 0 };
-        return d3.linkHorizontal<any, {x:number, y:number}>().x(d => d.y).y(d => d.x)({ source: o, target: o });
+        return d3.linkHorizontal<any, {x:number, y:number}>().x(dNode => dNode.y).y(dNode => dNode.x)({ source: o, target: o });
       });
 
     linkEnter.merge(link)
@@ -147,8 +152,8 @@ export function D3SubjectGraph({ treeData }: D3SubjectGraphProps) {
     link.exit().transition()
       .duration(animationDuration)
       .attr('d', () => {
-        const o = { x: effectiveSource.x, y: effectiveSource.y };
-        return d3.linkHorizontal<any, {x:number, y:number}>().x(d => d.y).y(d => d.x)({ source: o, target: o });
+        const o = { x: effectiveSource.x || 0, y: effectiveSource.y || 0 }; // Ensure source.x and source.y are defined
+        return d3.linkHorizontal<any, {x:number, y:number}>().x(dNode => dNode.y).y(dNode => dNode.x)({ source: o, target: o });
       })
       .remove();
 
@@ -156,31 +161,97 @@ export function D3SubjectGraph({ treeData }: D3SubjectGraphProps) {
       d.x0 = d.x;
       d.y0 = d.y;
     });
-  }, [animationDuration, nodeRadius]);
+  }, [animationDuration, nodeRadius]); // Added dependencies
 
   const collapse = useCallback((d: D3HierarchyNode) => {
     if (d.children) {
       d._children = d.children;
       d._children.forEach(collapse);
-      d.children = undefined; // Use undefined to signify no children for d3-hierarchy
+      d.children = undefined; 
+    }
+  }, []);
+  
+  const collapseAll = useCallback((d: D3HierarchyNode, keepRootChildren = false) => {
+    if (d.children) {
+        d._children = d.children;
+        if (keepRootChildren && d === d3State.current.root) {
+            d.children.forEach(child => {
+                if(child.children) collapseAll(child, false); // Collapse grandchildren and below
+            });
+            // d.children remains for root, but their children are now in _children
+        } else {
+            d.children.forEach(child => collapseAll(child, false));
+            d.children = undefined;
+        }
+    }
+  }, []);
+
+
+  const expand = useCallback((d: D3HierarchyNode) => {
+    if (d._children) {
+      d.children = d._children;
+      // d.children.forEach(expand); // This would fully expand, not just one level
+      d._children = undefined;
+    }
+  }, []);
+
+  const expandAll = useCallback((d: D3HierarchyNode) => {
+    if (d._children) {
+        d.children = d._children;
+        d._children = undefined;
+    }
+    if (d.children) {
+        d.children.forEach(expandAll);
     }
   }, []);
 
   const handleClick = useCallback((d: D3HierarchyNode) => {
-    if (d.children) {
+    if (d.children) { // If expanded, collapse it
       d._children = d.children;
       d.children = undefined;
-    } else {
+    } else if (d._children) { // If collapsed, expand it
       d.children = d._children;
       d._children = undefined;
     }
     updateChart(d);
   }, [updateChart]);
 
-  // Effect for initial setup and resize
+  const handleToggleExpandAll = () => {
+    if (!d3State.current.root) return;
+    if (isFullyExpanded) {
+      // Collapse to initial state (root's children visible)
+      collapseAll(d3State.current.root, true);
+    } else {
+      // Expand all
+      expandAll(d3State.current.root);
+    }
+    setIsFullyExpanded(!isFullyExpanded);
+    updateChart(d3State.current.root);
+  };
+  
+  const handleExportPng = useCallback(() => {
+    if (svgRef.current) {
+      toPng(svgRef.current, { 
+          backgroundColor: 'hsl(var(--background))', // Use theme background
+          pixelRatio: 2 // Higher resolution
+      })
+        .then((dataUrl) => {
+          const link = document.createElement('a');
+          link.download = `${fieldOfStudy.toLowerCase().replace(/\s+/g, '_')}_graph.png`;
+          link.href = dataUrl;
+          link.click();
+        })
+        .catch((err) => {
+          console.error('Failed to export PNG:', err);
+          // Potentially show a toast notification for the error
+        });
+    }
+  }, [fieldOfStudy]);
+
+
   useEffect(() => {
     const initOrResize = () => {
-        if (!svgRef.current) return;
+        if (!svgRef.current || !graphWrapperRef.current) return;
         d3State.current.dimensions = getContainerDimensions();
         const { width, height } = d3State.current.dimensions;
 
@@ -188,9 +259,11 @@ export function D3SubjectGraph({ treeData }: D3SubjectGraphProps) {
             .attr('width', width)
             .attr('height', height);
         
-        if (!d3State.current.svg) { // Initial setup
+        if (!d3State.current.svg) { 
             d3State.current.svg = svg;
-            d3State.current.zoomBehavior = d3.zoom<SVGSVGElement, unknown>().on('zoom', (event) => {
+            d3State.current.zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
+              .scaleExtent([0.1, 5]) // Zoom limits
+              .on('zoom', (event) => {
                 if (d3State.current.g) {
                 d3State.current.g.attr('transform', event.transform);
                 }
@@ -202,66 +275,88 @@ export function D3SubjectGraph({ treeData }: D3SubjectGraphProps) {
                 .attr('transform', `translate(${margin.left},${margin.top})`);
             
             d3State.current.treeLayout = d3.tree<TreeNodeData>();
-        } else { // Resize
-            // Potentially adjust viewbox or re-call zoom if needed for robust resize.
-            // For now, just update dimensions and treeLayout size, then redraw.
-        }
+        } 
         
-        if (d3State.current.root) { // If data exists, re-render
-             // Ensure the tree layout is aware of new dimensions before updating
+        if (d3State.current.root) { 
             const margin = { top: 20, right: 120, bottom: 20, left: 120 };
             const innerWidth = width - margin.left - margin.right;
             const innerHeight = height - margin.top - margin.bottom;
-            if(d3State.current.treeLayout) d3State.current.treeLayout.size([innerHeight, innerWidth]);
+            if(d3State.current.treeLayout && innerWidth > 0 && innerHeight > 0) {
+              d3State.current.treeLayout.size([innerHeight, innerWidth]);
+            }
+            // Center graph initially after resize if zoom behavior is present
+            if (d3State.current.zoomBehavior && d3State.current.g) {
+                const initialTransform = d3.zoomIdentity.translate(margin.left, margin.top).scale(1);
+                svg.call(d3State.current.zoomBehavior.transform, initialTransform);
+                d3State.current.g.attr('transform', initialTransform.toString());
+            }
             updateChart(d3State.current.root);
         }
     };
     
-    initOrResize(); // Call once on mount
+    initOrResize(); 
 
     const resizeObserver = new ResizeObserver(initOrResize);
-    if (svgRef.current?.parentElement) {
-      resizeObserver.observe(svgRef.current.parentElement);
+    if (graphWrapperRef.current) {
+      resizeObserver.observe(graphWrapperRef.current);
     }
 
     return () => {
-      if (svgRef.current?.parentElement) {
-        resizeObserver.unobserve(svgRef.current.parentElement);
+      if (graphWrapperRef.current) {
+        resizeObserver.unobserve(graphWrapperRef.current);
       }
       resizeObserver.disconnect();
     };
-  }, [getContainerDimensions, updateChart]); // Only on mount/unmount of container logic
+  }, [getContainerDimensions, updateChart]); 
 
-  // Effect for data changes
   useEffect(() => {
     if (!treeData || !d3State.current.g || !d3State.current.treeLayout || d3State.current.dimensions.width === 0) {
-      if(d3State.current.g) d3State.current.g.selectAll("*").remove(); // Clear graph if no data
+      if(d3State.current.g) d3State.current.g.selectAll("*").remove(); 
       d3State.current.root = null;
       return;
     }
     
     const { height } = d3State.current.dimensions;
     const rootNode = d3.hierarchy(treeData, d => d.children) as D3HierarchyNode;
-    rootNode.x0 = height / 2;
+    rootNode.x0 = height / 2; // Centered for horizontal tree
     rootNode.y0 = 0;
     d3State.current.root = rootNode;
-    d3State.current.i = 0; // Reset node id counter
+    d3State.current.i = 0; 
 
-    // Collapse children of the root's children, but keep root's children visible
+    // Collapse children of the root's children, but keep root's children visible (initial state)
     if (rootNode.children) {
       rootNode.children.forEach(child => {
         if (child.children) {
-          collapse(child);
+          collapse(child); 
         }
       });
     }
+    setIsFullyExpanded(false); // Reset expansion state on new data
     
+    // Initial centering
+    const margin = { top: 20, right: 120, bottom: 20, left: 120 };
+    if (d3State.current.svg && d3State.current.zoomBehavior && d3State.current.g) {
+        const initialTransform = d3.zoomIdentity.translate(margin.left, margin.top).scale(1);
+        d3State.current.svg.call(d3State.current.zoomBehavior.transform, initialTransform);
+        d3State.current.g.attr('transform', initialTransform.toString());
+    }
+
     updateChart(rootNode);
 
-  }, [treeData, collapse, updateChart]); // React to treeData changes
+  }, [treeData, collapse, updateChart]); 
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }} className="bg-background border border-border rounded-lg">
+    <div ref={graphWrapperRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }} className="bg-background border border-border rounded-lg">
+      <div className="absolute top-2 right-2 z-10 flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleToggleExpandAll} title={isFullyExpanded ? "Collapse All" : "Expand All"}>
+            {isFullyExpanded ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+            <span className="sr-only">{isFullyExpanded ? "Collapse All" : "Expand All"}</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportPng} title="Export as PNG">
+            <ImageIcon className="h-4 w-4" />
+            <span className="sr-only">Export as PNG</span>
+          </Button>
+      </div>
       <svg ref={svgRef} style={{ width: '100%', height: '100%' }}></svg>
       <div
         ref={tooltipRef}
@@ -279,9 +374,10 @@ export function D3SubjectGraph({ treeData }: D3SubjectGraphProps) {
           opacity: 0,
           transition: 'opacity 0.2s ease-out',
           boxShadow: '0 3px 6px rgba(0,0,0,0.1)',
-          zIndex: 10, // Ensure tooltip is on top
+          zIndex: 10, 
         }}
       ></div>
     </div>
   );
 }
+
