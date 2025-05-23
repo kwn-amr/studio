@@ -32,6 +32,7 @@ export default function SubjectArborPage() {
         try {
           const parsedData = JSON.parse(resultFromAI.treeData) as TreeNodeData;
           
+          // Validate the structure of the parsed data
           if (typeof parsedData.name !== 'string' || !Array.isArray(parsedData.children)) {
             console.error("Parsed data is missing 'name' or 'children' array at the root.", parsedData);
             throw new Error("The AI's response, while valid JSON, does not match the expected tree structure (missing root 'name' or 'children').");
@@ -47,8 +48,9 @@ export default function SubjectArborPage() {
           setTreeData(null);
           let description = "Received data from the AI is not a valid JSON tree structure. Please try again or a different query.";
           if (parseError.message.includes("does not match the expected tree structure")) {
-            description = parseError.message;
+            description = parseError.message; // Use the specific error message from the check
           } else if (parseError instanceof SyntaxError && resultFromAI.treeData) {
+             // Provide a snippet of the invalid JSON if it's a SyntaxError
              description = `The AI's response was a string that could not be parsed as JSON. Received (partial): ${resultFromAI.treeData.substring(0,100)}... Error: ${parseError.message}`;
           } else {
             description = `Error parsing AI's JSON response: ${parseError.message}`;
@@ -60,17 +62,19 @@ export default function SubjectArborPage() {
           });
         }
       } else {
-        // This case should ideally not be hit if generateSubjectTree throws on failure
+        // This case should ideally not be hit if generateSubjectTree throws on failure or returns empty treeData
         throw new Error("No tree data string received from AI, though the call seemed to succeed.");
       }
     } catch (error: any) {
       console.error("Error generating subject tree:", error);
       setTreeData(null);
       
+      // Attempt to provide more descriptive error messages
       let descriptiveMessage = "An unexpected error occurred while generating the subject tree. Please try again.";
 
       if (error && typeof error.message === 'string') {
         const msg = error.message;
+        // Specific OpenRouter error messages
         if (msg.includes("OpenRouter API key is not configured")) {
             descriptiveMessage = "OpenRouter API key is not configured. Please set OPENROUTER_API_KEY in your .env file.";
         } else if (msg.includes("OpenRouter API request failed with status 401")) {
@@ -82,12 +86,14 @@ export default function SubjectArborPage() {
         } else if (msg.includes("OpenRouter API error") && msg.includes("Provider returned error")) {
             descriptiveMessage = "The AI model provider encountered an issue. This might be temporary. Please try again. Details: " + msg;
         } else if (msg.includes("Failed to parse OpenRouter response") || msg.includes("did not yield a parsable JSON string")) {
+            // This indicates an issue in extracting or getting the JSON string itself
             descriptiveMessage = "The AI's response could not be processed into a valid subject tree. Please try again. Details: " + msg.split("Details: ")[1] || msg;
         } else if (msg.includes("was not valid JSON") || msg.includes("does not match the expected tree structure")) {
+            // These errors come from JSON.parse or our structural validation
             descriptiveMessage = "The AI's response was not a valid or correctly structured subject tree. Please try again. Details: " + msg.split("Details: ")[1] || msg;
         } else if (msg.startsWith("OpenRouter API") || msg.startsWith("AI response")) { // General OpenRouter or AI errors
             descriptiveMessage = error.message;
-        } else if (msg.length > 0 && msg.length < 300) { 
+        } else if (msg.length > 0 && msg.length < 300) { // Show shorter, potentially custom error messages directly
              descriptiveMessage = error.message;
         }
       }
