@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -95,36 +96,87 @@ Example of the required JSON tree structure:
         throw new Error("Cerebras API returned an empty response. The model might not have been able to generate content for the given field of study.");
     }
     
-    let jsonString = fullResponse.trim();
+    let textToParse = fullResponse.trim();
 
-    // Attempt to extract JSON if it's embedded
-    // Case 1: ```json ... ```
-    const markdownJsonMatch = jsonString.match(/```json\s*([\s\S]*?)\s*```/);
+    // Attempt to extract JSON from ```json ... ``` block first
+    // Use /s flag for dotall to handle newlines within the JSON block
+    const markdownJsonMatch = textToParse.match(/```json\s*([\s\S]*?)\s*```/s);
     if (markdownJsonMatch && markdownJsonMatch[1]) {
-        jsonString = markdownJsonMatch[1].trim();
-    } else {
-        // Case 2: Find first '{' and last '}' or first '[' and last ']'
-        const firstBrace = jsonString.indexOf('{');
-        const lastBrace = jsonString.lastIndexOf('}');
-        const firstBracket = jsonString.indexOf('[');
-        const lastBracket = jsonString.lastIndexOf(']');
+        textToParse = markdownJsonMatch[1].trim();
+    }
+    // Now, `textToParse` is either the content of the markdown block or the original trimmed response.
+    // We need to find the first actual JSON object/array within this string.
 
-        if (firstBrace !== -1 && lastBrace > firstBrace) {
-            // Prefer object if both object and array-like structures are plausible from extraction
-            jsonString = jsonString.substring(firstBrace, lastBrace + 1);
-        } else if (firstBracket !== -1 && lastBracket > firstBracket) {
-            jsonString = jsonString.substring(firstBracket, lastBracket + 1);
+    let extractedJson: string | null = null;
+    let openChar: '{' | '[' | undefined = undefined;
+    let closeChar: '}' | ']' | undefined = undefined;
+    let startIndex = -1;
+
+    const firstBrace = textToParse.indexOf('{');
+    const firstBracket = textToParse.indexOf('[');
+
+    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+        openChar = '{';
+        closeChar = '}';
+        startIndex = firstBrace;
+    } else if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+        openChar = '[';
+        closeChar = ']';
+        startIndex = firstBracket;
+    }
+
+    if (openChar && closeChar && startIndex !== -1) {
+        let balance = 0;
+        let inString = false;
+        let escapeNext = false;
+        
+        for (let i = startIndex; i < textToParse.length; i++) {
+            const char = textToParse[i];
+
+            if (escapeNext) {
+                escapeNext = false;
+                continue;
+            }
+            if (char === '\\') {
+                escapeNext = true;
+                continue;
+            }
+            // This simple string parsing handles quoted strings.
+            // It doesn't account for all unicode escape nuances but is common.
+            if (char === '"') { 
+                inString = !inString;
+            }
+
+            if (!inString) { // Only count braces/brackets if not inside a string
+                if (char === openChar) {
+                    balance++;
+                } else if (char === closeChar) {
+                    balance--;
+                }
+            }
+
+            if (balance === 0 && i >= startIndex) { 
+                // We found a balanced structure from the startIndex.
+                extractedJson = textToParse.substring(startIndex, i + 1);
+                break; // Assume this is the complete JSON object/array
+            }
         }
-        // If neither, jsonString remains fullResponse.trim()
     }
     
-    // Basic validation that the (potentially extracted) string is likely JSON.
-    if (!(jsonString.startsWith('{') && jsonString.endsWith('}')) && !(jsonString.startsWith('[') && jsonString.endsWith(']'))) {
-        console.error("Cerebras API response, after attempting extraction, does not appear to be a valid JSON object or array. Original response (partial):", fullResponse.substring(0, 500) ,"Extracted (partial):", jsonString.substring(0,200));
-        throw new Error(`Cerebras API response does not appear to be a valid JSON object or array. Original response (partial for debugging): ${fullResponse.substring(0, 200)}`);
+    if (!extractedJson) {
+        console.error("Could not extract a valid JSON structure. Original response (partial):", fullResponse.substring(0, 500) ,"Attempted extraction from (partial):", textToParse.substring(0,200));
+        throw new Error(`Cerebras API response, after attempting extraction, does not appear to contain a parsable JSON object or array. Original response (partial for debugging): ${fullResponse.substring(0, 200)}`);
+    }
+    
+    const finalJsonString = extractedJson;
+
+    // Final validation on the extracted segment
+    if (!(finalJsonString.startsWith('{') && finalJsonString.endsWith('}')) && !(finalJsonString.startsWith('[') && finalJsonString.endsWith(']'))) {
+        console.error("Extracted JSON segment does not start/end with braces/brackets. Extracted (partial):", finalJsonString.substring(0,200));
+        throw new Error(`Failed to properly extract JSON. Extracted segment (partial for debugging): ${finalJsonString.substring(0, 200)}`);
     }
 
-    return { treeData: jsonString };
+    return { treeData: finalJsonString };
 
   } catch (error: any) {
     console.error('Error calling Cerebras API:', error);
@@ -135,8 +187,7 @@ Example of the required JSON tree structure:
     if (error.status === 429) {
         throw new Error("Cerebras API rate limit exceeded (429). Please try again later.");
     }
-    // Re-throw other errors, potentially enriched, or use the already specific error message
-    if (error instanceof Error && (error.message.startsWith("Cerebras API returned an empty response") || error.message.startsWith("Cerebras API response does not appear to be a valid JSON"))) {
+    if (error instanceof Error && (error.message.startsWith("Cerebras API returned an empty response") || error.message.includes("does not appear to contain a parsable JSON") || error.message.startsWith("Failed to properly extract JSON"))) {
         throw error; // Re-throw our custom errors
     }
     throw new Error(`Cerebras API error: ${errorMessage}`);
