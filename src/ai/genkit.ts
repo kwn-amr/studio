@@ -1,11 +1,10 @@
-// import {genkit} from 'genkit';
-// import {googleAI} from '@genkit-ai/googleai';
 
-// export const ai = genkit({
-//   plugins: [googleAI()],
-//   model: 'googleai/gemini-2.0-flash', // Default model, can be overridden
-// });
+import {genkit} from 'genkit';
+import {googleAI} from '@genkit-ai/googleai';
 
-// This file's Genkit setup is not used by flows directly using other SDKs like Cerebras.
-// If other Genkit flows were to be added, this would need to be configured appropriately.
-export {}; // Ensures this file is treated as a module.
+// Initialize Genkit with the Google AI plugin.
+// Even if a specific flow uses a direct fetch call (like for OpenRouter),
+// the `ai` object needs to be initialized for `ai.defineFlow` and other Genkit functionalities.
+export const ai = genkit({
+  plugins: [googleAI()], // Using googleAI as a default plugin example
+});

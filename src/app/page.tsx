@@ -19,7 +19,6 @@ export default function SubjectArborPage() {
     setIsLoading(true);
     setFieldOfStudy(submittedField);
     setTreeData(null); // Clear previous tree
-    let resultFromAI;
     
     try {
       toast({
@@ -27,7 +26,7 @@ export default function SubjectArborPage() {
         description: `Generating subject tree for "${submittedField}"... This may take a moment.`,
       });
       
-      resultFromAI = await generateSubjectTree({ fieldOfStudy: submittedField });
+      const resultFromAI = await generateSubjectTree({ fieldOfStudy: submittedField });
       
       if (resultFromAI.treeData) {
         try {
@@ -61,7 +60,8 @@ export default function SubjectArborPage() {
           });
         }
       } else {
-        throw new Error("No tree data string received from AI, though the call succeeded.");
+        // This case should ideally not be hit if generateSubjectTree throws on failure
+        throw new Error("No tree data string received from AI, though the call seemed to succeed.");
       }
     } catch (error: any) {
       console.error("Error generating subject tree:", error);
@@ -70,19 +70,22 @@ export default function SubjectArborPage() {
       let descriptiveMessage = "An unexpected error occurred while generating the subject tree. Please try again.";
 
       if (error && typeof error.message === 'string') {
-        const msg = error.message; 
-        
-        if (msg.includes("API authentication failed") || msg.includes("CEREBRAS_API_KEY")) {
-          descriptiveMessage = "API authentication failed. Please check your Cerebras API key in the .env file or contact support.";
-        } else if (msg.includes("API rate limit exceeded")) {
-          descriptiveMessage = "API rate limit exceeded. Please try again later or check your Cerebras plan.";
-        } else if (msg.includes("Cerebras API key is not configured")) {
-           descriptiveMessage = "Cerebras API key is not configured. Please set CEREBRAS_API_KEY in your .env file.";
-        } else if (msg.includes("Failed to extract a valid JSON object") || msg.includes("was not valid JSON")) {
-            descriptiveMessage = "The AI's response was not a valid JSON object string. Please try again. Details: " + msg.split("Details: ")[1] || msg;
-        } else if (msg.includes("does not match the expected tree structure")) {
-            descriptiveMessage = "The AI's response was valid JSON but did not match the expected tree structure (e.g., missing 'name' or 'children' at the root).";
-        } else if (msg.startsWith("Cerebras API") || msg.startsWith("AI response")) {
+        const msg = error.message;
+        if (msg.includes("OpenRouter API key is not configured")) {
+            descriptiveMessage = "OpenRouter API key is not configured. Please set OPENROUTER_API_KEY in your .env file.";
+        } else if (msg.includes("OpenRouter API request failed with status 401")) {
+            descriptiveMessage = "OpenRouter API authentication failed (401). Check your OPENROUTER_API_KEY.";
+        } else if (msg.includes("OpenRouter API request failed with status 429")) {
+            descriptiveMessage = "OpenRouter API rate limit exceeded (429). Please try again later or check your OpenRouter plan.";
+        } else if (msg.includes("OpenRouter API error: Problem with the JSON schema")) {
+            descriptiveMessage = "There was a problem with how the AI was asked to structure its response. Please try again. If the issue persists, contact support. Details: " + msg.split("Details: ")[1] || msg;
+        } else if (msg.includes("OpenRouter API error") && msg.includes("Provider returned error")) {
+            descriptiveMessage = "The AI model provider encountered an issue. This might be temporary. Please try again. Details: " + msg;
+        } else if (msg.includes("Failed to parse OpenRouter response") || msg.includes("did not yield a parsable JSON string")) {
+            descriptiveMessage = "The AI's response could not be processed into a valid subject tree. Please try again. Details: " + msg.split("Details: ")[1] || msg;
+        } else if (msg.includes("was not valid JSON") || msg.includes("does not match the expected tree structure")) {
+            descriptiveMessage = "The AI's response was not a valid or correctly structured subject tree. Please try again. Details: " + msg.split("Details: ")[1] || msg;
+        } else if (msg.startsWith("OpenRouter API") || msg.startsWith("AI response")) { // General OpenRouter or AI errors
             descriptiveMessage = error.message;
         } else if (msg.length > 0 && msg.length < 300) { 
              descriptiveMessage = error.message;
