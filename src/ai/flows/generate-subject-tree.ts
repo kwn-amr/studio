@@ -1,244 +1,246 @@
 
 'use server';
+
 /**
- * @fileOverview Generates a tree graph of subjects related to a field of study using Cerebras.
+ * @fileOverview Generates a tree graph of subjects related to a field of study using Cerebras AI.
  *
  * - generateSubjectTree - A function that handles the generation of the subject tree.
  * - GenerateSubjectTreeInput - The input type for the generateSubjectTree function.
  * - GenerateSubjectTreeOutput - The return type for the generateSubjectTree function.
  */
+
 import Cerebras from '@cerebras/cerebras_cloud_sdk';
+import type { ChatCompletionMessageParam } from '@cerebras/cerebras_cloud_sdk/resources/chat/completions';
+
 
 export interface GenerateSubjectTreeInput {
   fieldOfStudy: string;
 }
 
 export interface GenerateSubjectTreeOutput {
-  treeData: string; // JSON string from the AI
+  treeData: string; // JSON string
 }
 
-// Helper function to extract JSON from a string that might contain leading/trailing text
-function extractJsonFromString(str: string): string | null {
-  if (!str) return null;
-
-  let cleanedStr = str;
-  // Remove markdown code fences if present
-  const markdownMatch = str.match(/```json\s*([\s\S]*?)\s*```/);
-  if (markdownMatch && markdownMatch[1]) {
-    cleanedStr = markdownMatch[1].trim();
-  } else {
-     // Fallback for cases where markdown fences might be incomplete or slightly off
-    cleanedStr = str.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
-  }
-
-
-  // Remove common conversational prefixes or echoed instructions
-  const prefixesToRemove = [
-    "Okay, here is the JSON object for the subject tree:",
-    "Here is the JSON representation of the subject tree:",
-    "Here's the JSON for the subject tree:",
-    "Here's the JSON:",
-    "Sure, here is the JSON output:",
-    "The JSON output is:",
-    "You want a JSON tree. Here it is:",
-    "The subject tree is as follows in JSON format:",
-    "Certainly, here is the requested JSON structure:",
-    "Response:",
-    "Output:",
-  ];
-  // More aggressive prefix removal if initial attempts fail to parse
-  for (const prefix of prefixesToRemove) {
-    if (cleanedStr.toLowerCase().startsWith(prefix.toLowerCase())) {
-      cleanedStr = cleanedStr.substring(prefix.length).trim();
-    }
-  }
-  // Attempt to remove any text before the first '{' or '['
-   const firstMeaningfulChar = cleanedStr.search(/[\{\[]/);
-   if (firstMeaningfulChar > 0) {
-       cleanedStr = cleanedStr.substring(firstMeaningfulChar);
-   }
-
-
-  const firstBrace = cleanedStr.indexOf('{');
-  const firstBracket = cleanedStr.indexOf('[');
-
-  let startIndex = -1;
-  let isObject = false;
-
-  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
-    startIndex = firstBrace;
-    isObject = true;
-  } else if (firstBracket !== -1) {
-    startIndex = firstBracket;
-    isObject = false; // It's an array
-  }
-
-  if (startIndex === -1) {
-    console.warn("No JSON object or array start found in string after cleaning. Original string (partial):", str.substring(0,200), "Cleaned string (partial):", cleanedStr.substring(0,200));
-    return null;
-  }
-
-  // If the string doesn't start at the determined startIndex, slice it.
-  if (startIndex > 0) {
-      cleanedStr = cleanedStr.substring(startIndex);
-  }
-
-
-  let openCount = 0;
-  let endIndex = -1;
-  const openChar = isObject ? '{' : '[';
-  const closeChar = isObject ? '}' : ']';
-  let inString = false;
-  let escapeNext = false;
-
-  for (let i = 0; i < cleanedStr.length; i++) {
-    const char = cleanedStr[i];
-
-    if (escapeNext) {
-        escapeNext = false;
-        continue;
-    }
-    if (char === '\\') {
-        escapeNext = true;
-        continue;
-    }
-    if (char === '"' && !escapeNext) {
-        inString = !inString;
+// Helper function to extract JSON from a string that might contain markdown or conversational fluff
+function extractJsonFromString(text: string): string | null {
+    if (!text || !text.trim()) {
+        console.warn("extractJsonFromString called with empty or whitespace-only text.");
+        return null;
     }
 
-    if (!inString) {
-        if (char === openChar) {
-            openCount++;
-        } else if (char === closeChar) {
-            openCount--;
+    let textToParse = text.trim();
+
+    // Attempt to extract content from markdown block first
+    const markdownJsonMatch = textToParse.match(/```json\s*([\s\S]*?)\s*```/s);
+    if (markdownJsonMatch && markdownJsonMatch[1]) {
+        textToParse = markdownJsonMatch[1].trim();
+    } else {
+        // If no markdown block, aggressively remove common AI conversational fluff and echoed instructions.
+        const patternsToRemove = [
+            /^<response>|<\/response>$/g,
+            /^[\s\S]*?<think>[\s\S]*?<\/think>\s*/i, 
+            /^\s*Okay, here is the JSON(?: output| object| response)?[.:\s]*/i,
+            /^\s*Sure, here is the JSON(?: output| object| response)?[.:\s]*/i,
+            /^\s*Here's the JSON(?: output| object| response)?[.:\s]*/i,
+            /^\s*The JSON(?: output| object| response) is[.:\s]*/i,
+            /^\s*I have generated the JSON object as requested\s*[.:\s]*/i,
+            // Remove specific echoed instructions if they appear as full lines
+            /^\s*Your response MUST contain ONLY the JSON object itself.*$/gim,
+            /^\s*The root node MUST be the field of study itself.*$/gim,
+            /^\s*STRICTLY ADHERE to providing only the raw JSON.*$/gim,
+            /^\s*ABSOLUTELY NO other text.*$/gim,
+            /^\s*Example of the required JSON tree structure:.*$/gim,
+             /^\s*```json\s*/,
+            /\s*```\s*$/,
+        ];
+        
+        for (const regex of patternsToRemove) {
+            textToParse = textToParse.replace(regex, '').trim();
         }
     }
-
-    if (openCount === 0 && i >= 0) { // Ensure we've processed at least one char of the structure
-      endIndex = i;
-      break;
+    
+    if (!textToParse) {
+        console.warn("After cleaning, the response string for JSON extraction is empty.");
+        return null;
     }
-  }
+    
+    let openChar: '{' | '[' | undefined = undefined;
+    let closeChar: '}' | ']' | undefined = undefined;
+    let startIndex = -1;
 
-  if (endIndex === -1) {
-    console.warn("Incomplete JSON structure found after attempting to balance braces/brackets. Started with:", cleanedStr.substring(0,200));
-    return null;
-  }
-  
-  return cleanedStr.substring(0, endIndex + 1);
+    const firstBrace = textToParse.indexOf('{');
+    const firstBracket = textToParse.indexOf('[');
+
+    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+        openChar = '{';
+        closeChar = '}';
+        startIndex = firstBrace;
+    } else if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+        // While we expect an object, allow for array if AI mistakenly returns it, primary parsing will validate structure
+        openChar = '[';
+        closeChar = ']';
+        startIndex = firstBracket;
+    }
+
+    if (!openChar || !closeChar || startIndex === -1) {
+        console.warn("Could not find a starting '{' or '[' for JSON extraction in cleaned text:", textToParse.substring(0,200));
+        return null; // No JSON structure found
+    }
+
+    let balance = 0;
+    let inString = false;
+    let escapeNext = false;
+    
+    for (let i = startIndex; i < textToParse.length; i++) {
+        const char = textToParse[i];
+
+        if (escapeNext) {
+            escapeNext = false;
+            continue;
+        }
+        if (char === '\\') {
+            escapeNext = true;
+            continue;
+        }
+        if (char === '"') { 
+            inString = !inString;
+        }
+
+        if (!inString) {
+            if (char === openChar) {
+                balance++;
+            } else if (char === closeChar) {
+                balance--;
+            }
+        }
+
+        if (balance === 0 && i >= startIndex) { 
+            return textToParse.substring(startIndex, i + 1);
+        }
+    }
+    
+    console.warn("Could not find a balanced JSON structure in cleaned text:", textToParse.substring(0,200));
+    return null; // Unbalanced JSON
 }
 
 
 export async function generateSubjectTree(input: GenerateSubjectTreeInput): Promise<GenerateSubjectTreeOutput> {
   const apiKey = process.env.CEREBRAS_API_KEY;
 
-  if (!apiKey || apiKey === "your_cerebras_key_here") {
-    console.error('CEREBRAS_API_KEY is not set or is the default placeholder.');
-    throw new Error('Cerebras API key is not configured. Please set CEREBRAS_API_KEY in your .env file.');
+  if (!apiKey) {
+    console.error('CEREBRAS_API_KEY is not set.');
+    throw new Error('Cerebras API key is not configured. Please set CEREBRAS_API_KEY in your environment variables.');
   }
 
-  const cerebras = new Cerebras({ apiKey });
+  const cerebras = new Cerebras({
+    apiKey: apiKey,
+  });
 
-  const systemPrompt = `You are an AI assistant that generates ONLY valid JSON.
-Your SOLE task is to produce a single, complete, and VALID JSON string representing a subject tree for the field: "${input.fieldOfStudy}".
+  const systemPrompt = `You are an expert in structuring fields of study into comprehensive and detailed tree graphs.
+Your SOLE task is to generate a JSON string representing an extensive tree graph of subjects.
+Generate the JSON in a top-down, streamable fashion, starting with the root node.
+The root node MUST be the field of study itself: "${input.fieldOfStudy}". Its "name" property must be exactly this value.
+Sub-disciplines MUST be branches, and specific subjects, concepts, or theories MUST be leaves.
+The tree MUST be highly detailed, featuring multiple levels of hierarchy.
+It should span from the most foundational, introductory concepts to more specialized, advanced, or even cutting-edge research topics within the field. Aim for significant depth and breadth.
+The JSON output MUST be valid and parsable. Each node in the JSON MUST have a "name" key (string) and a "children" key (array of nodes). If a node has no subtopics, its "children" array MUST be empty ([]).
+Your entire response MUST be *only* the raw JSON text representing the tree object.
+DO NOT include any other explanatory text, conversation, apologies, or markdown formatting (like \`\`\`json ... \`\`\`) before or after the single, complete JSON object.
+DO NOT return a JSON array as the root element. The root MUST be a JSON object.
 
-The entire output MUST be a single JSON object.
-This root JSON object MUST have:
-1.  A "name" key: Its value MUST be the string "${input.fieldOfStudy}".
-2.  A "children" key: Its value MUST be an array of node objects.
-
-Each node object in any "children" array (including at nested levels) MUST also have:
-1.  A "name" key (string value for the sub-discipline or topic).
-2.  A "children" key (array of further node objects, or an empty array [] for leaf nodes).
-
-Leaf nodes (topics with no sub-topics) MUST have an empty "children" array (i.e., "children": []).
-
-CRITICAL JSON SYNTAX RULES:
-1.  All string values (like for "name") MUST be enclosed in double quotes (e.g., "Physics").
-2.  Keys ("name", "children") MUST be enclosed in double quotes.
-3.  Objects are enclosed in curly braces {}. Arrays are in square brackets [].
-4.  Elements in an array are separated by commas. Key-value pairs in an object are separated by commas.
-5.  There should be NO trailing commas after the last element in an array or the last pair in an object.
-6.  The JSON string values, especially for "name" fields, must be plain text.
-7.  ABSOLUTELY NO conversational text, comments, apologies, self-corrections, diagnostic information, error messages, or markdown (like \`\`\`json) should be part of the JSON output, NEITHER before, after, NOR WITHIN the JSON structure.
-DO NOT return a JSON array as the root element. The root element MUST be a JSON object as described.
-DO NOT return multiple JSON objects. The entire response is one single JSON object.
-
-EXAMPLE of expected VALID JSON structure for the input field "${input.fieldOfStudy}":
+Example of the required JSON tree structure for a field of study like "Physics":
 {
-  "name": "${input.fieldOfStudy}",
+  "name": "Physics",
   "children": [
     {
-      "name": "Relevant Sub-discipline 1 for ${input.fieldOfStudy}",
+      "name": "Classical Mechanics",
       "children": [
-        { "name": "Relevant Topic 1.1", "children": [] },
-        { "name": "Relevant Topic 1.2", "children": [] }
+        { "name": "Newtonian Mechanics", "children": [
+            { "name": "Newton's Laws of Motion", "children": [] },
+            { "name": "Work and Energy", "children": [] }
+          ]
+        }
       ]
     },
-    { "name": "Relevant Sub-discipline 2 for ${input.fieldOfStudy}", "children": [] }
+    {
+      "name": "Quantum Mechanics",
+      "children": []
+    }
   ]
-}
+}`;
 
-The tree MUST be highly detailed and comprehensive, spanning from foundational concepts to specialized, advanced, or cutting-edge research topics related to "${input.fieldOfStudy}".
-Your entire response MUST be *only* the raw JSON text representing the tree object, starting with '{' and ending with '}'.`;
-
-  const userPrompt = `Generate the detailed JSON subject tree for "${input.fieldOfStudy}". Ensure the entire output is only the valid JSON object.`;
-
-  console.log("Sending request to Cerebras for field:", input.fieldOfStudy);
-  console.log("System prompt (partial for example):", systemPrompt.substring(0, 300) + "...");
-
+  const messages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemPrompt },
+    {
+      role: 'user',
+      content: `Generate a valid, highly detailed, and comprehensive JSON subject tree for the field of study: "${input.fieldOfStudy}".
+Your entire response must be only the JSON object as specified in the system prompt.
+Ensure significant depth and breadth, from foundational to advanced topics.
+The root node's "name" property must be exactly "${input.fieldOfStudy}".
+Ensure all strings within the JSON are properly quoted and escaped.
+Provide only the JSON object, starting with '{' and ending with '}'.`,
+    },
+  ];
 
   try {
+    // The Cerebras SDK's stream: true option means the SDK handles receiving data in chunks from the API.
+    // This function then accumulates these chunks to form the full response before processing.
     const stream = await cerebras.chat.completions.create({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
+      messages: messages,
       model: 'qwen-3-32b',
       stream: true,
-      max_completion_tokens: 16382, // Increased from 8192 to allow for larger trees
-      temperature: 0.2, // Lowered temperature for more deterministic and structured output
-      top_p: 0.9, 
+      max_completion_tokens: 16382, 
+      temperature: 0.2, // Lower temperature for more deterministic and syntactically correct output
+      top_p: 0.95,
     });
 
-    let accumulatedContent = '';
+    let fullResponse = '';
+    console.log("Starting to process stream from Cerebras for:", input.fieldOfStudy);
+    let chunkCount = 0;
     for await (const chunk of stream) {
-      accumulatedContent += chunk.choices[0]?.delta?.content || '';
+      const content = chunk.choices[0]?.delta?.content || '';
+      fullResponse += content;
+      chunkCount++;
     }
-
-    console.log("Raw accumulated response from Cerebras (first 1000 chars):", accumulatedContent.substring(0, 1000));
-    console.log("Raw accumulated response from Cerebras (last 500 chars):", accumulatedContent.substring(Math.max(0, accumulatedContent.length - 500)));
-
-
-    const finalJsonString = extractJsonFromString(accumulatedContent);
+    console.log(`Finished processing ${chunkCount} chunks from Cerebras.`);
+    console.log("Raw accumulated Cerebras response (first 500 chars):", fullResponse.substring(0, 500));
+    
+    const finalJsonString = extractJsonFromString(fullResponse);
 
     if (!finalJsonString) {
-        console.error("Could not extract valid JSON from Cerebras response content. Raw accumulated content (partial):", accumulatedContent.substring(0, 500));
-        throw new Error(`Failed to extract a valid JSON object from the AI's response. The content might be malformed, empty, or lack a clear JSON structure. Received (partial): ${accumulatedContent.substring(0,200)}`);
+        console.error("After extraction, no valid JSON string was found. Original response (partial):", fullResponse.substring(0, 500));
+        throw new Error("The AI's response, after attempting extraction, does not appear to contain a parsable JSON object or array.");
     }
+    
+    console.log("Attempting to parse final extracted JSON (first 500 chars):", finalJsonString.substring(0,500));
 
+    // Basic validation of the extracted JSON string before returning.
+    // The main JSON.parse in page.tsx will be the primary validator for the full structure.
     try {
-        JSON.parse(finalJsonString);
+        JSON.parse(finalJsonString); 
     } catch (e: any) {
-        console.error("The extracted JSON string from Cerebras is invalid. Extracted (first 300 chars):", finalJsonString.substring(0,300));
-        console.error("Extracted (last 300 chars):", finalJsonString.substring(Math.max(0, finalJsonString.length - 300)));
-        console.error("Original parsing error:", e.message);
-        throw new Error(`The AI response, even after extraction, was not valid JSON. Error: ${e.message}. Extracted segment (partial for debugging): ${finalJsonString.substring(0, 200)}`);
+        console.error("The extracted JSON string is invalid. Extracted (partial):", finalJsonString.substring(0,300), "Error:", e.message);
+        throw new Error(`The AI response, even after extraction, was not valid JSON. Extracted segment (partial for debugging): ${finalJsonString.substring(0, 200)}. Original error: ${e.message}`);
     }
 
-    console.log("Successfully extracted and validated JSON string from Cerebras (first 500 chars):", finalJsonString.substring(0, 500));
     return { treeData: finalJsonString };
 
   } catch (error: any) {
     console.error('Error calling Cerebras API or processing its response:', error);
-    let errorMessage = `Cerebras API error: ${error.message || "An unknown error occurred."}`;
+    let errorMessage = error?.error?.message || error?.message || "An unknown error occurred while communicating with Cerebras API.";
     if (error.status === 401) {
-        errorMessage = "Cerebras API authentication failed (401). Check your CEREBRAS_API_KEY.";
+         errorMessage = "Cerebras API authentication failed (401). Check your CEREBRAS_API_KEY.";
     } else if (error.status === 429) {
         errorMessage = "Cerebras API rate limit exceeded (429). Please try again later.";
-    } else if (error.message && (error.message.includes("Failed to extract") || error.message.includes("not valid JSON") || error.message.includes("API key is not configured"))) {
-        errorMessage = error.message; 
+    } else if (error.message && (
+        error.message.includes("Cerebras API key is not configured") ||
+        error.message.includes("does not appear to contain a parsable JSON") ||
+        error.message.includes("was not valid JSON")
+    )) {
+        errorMessage = error.message; // Use the more specific error message we threw
     }
+    // Add more specific Cerebras error handling if their API returns structured errors
     throw new Error(errorMessage);
   }
 }
+
