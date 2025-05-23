@@ -66,7 +66,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: Subjec
             <TabsContent value="list" className="flex-grow overflow-hidden">
               <ScrollArea className={commonHeightClass}>
                 <ul>
-                  <TreeNode node={treeData} level={0} defaultExpanded={false} />
+                  <TreeNode node={treeData} level={0} defaultExpanded={true} />
                 </ul>
               </ScrollArea>
             </TabsContent>
