@@ -37,36 +37,47 @@ export default function SubjectArborPage() {
             variant: "default",
           });
         } catch (parseError) {
-          console.error("Failed to parse tree data:", parseError);
+          console.error("Failed to parse tree data:", parseError, "Received data:", result.treeData.substring(0, 500));
           setTreeData(null);
           toast({
             title: "Parsing Error",
-            description: "Received data is not a valid JSON tree structure. Please try again.",
+            description: "Received data from the AI is not a valid JSON tree structure. Please try again or a different query.",
             variant: "destructive",
           });
         }
       } else {
-        throw new Error("No tree data received from AI.");
+        // This case should ideally be caught by generateSubjectTree throwing an error
+        throw new Error("No tree data received from AI, though the call succeeded.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating subject tree:", error);
       setTreeData(null);
-      let errorMessage = "An unexpected error occurred. Please check the console for details or try a different query.";
-      if (error instanceof Error) {
-        // Try to provide a more user-friendly message for common issues
-        if (error.message.includes("quota") || error.message.includes("limit")) {
-             errorMessage = "API quota exceeded. Please try again later.";
-        } else if (error.message.includes("API key")) {
-             errorMessage = "API key issue. Please contact support.";
-        } else if (result && (result as any).error) { // Check if AI flow returned an error object
-            errorMessage = (result as any).error.message || errorMessage;
-        } else {
-            errorMessage = "Failed to generate tree. The AI model might be unable to process this request or there was a network issue.";
+      
+      let descriptiveMessage = "An unexpected error occurred while generating the subject tree. Please try again.";
+
+      if (error && typeof error.message === 'string') {
+        const msg = error.message.toLowerCase();
+        // Check for specific error messages from generateSubjectTree or common issues
+        if (msg.includes("quota") || msg.includes("limit") || msg.includes("rate limit exceeded")) {
+          descriptiveMessage = "API rate limit exceeded. Please try again later.";
+        } else if (msg.includes("api key") || msg.includes("authentication failed")) {
+          descriptiveMessage = "API authentication failed. Please check your API key or contact support.";
+        } else if (msg.includes("empty response")) {
+            descriptiveMessage = "The AI model returned an empty response. It might be unable to process this request for the given field of study.";
+        } else if (msg.includes("not a valid json") || msg.includes("not appear to be a valid json")) {
+            descriptiveMessage = "The AI model's response was not in the expected JSON format. Please try a different query or try again later.";
+        } else if (msg.startsWith("cerebras api error:") || msg.startsWith("cerebras api key is not configured")) {
+             // Use the message as is if it's a specific error from our flow or Cerebras client
+            descriptiveMessage = error.message;
+        } else if (msg.length > 0 && msg.length < 200) { // Generic JS error message if it's reasonable
+             descriptiveMessage = error.message;
         }
+        // else, the default generic message "An unexpected error occurred..." remains.
       }
+
       toast({
         title: "Error Generating Tree",
-        description: errorMessage,
+        description: descriptiveMessage,
         variant: "destructive",
       });
     } finally {

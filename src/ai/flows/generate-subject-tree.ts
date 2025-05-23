@@ -36,14 +36,16 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
     {
       role: 'system',
       content: `You are an expert in structuring fields of study into tree graphs.
-You will generate a JSON string representing a tree graph of subjects.
-The root node should be the field of study itself.
-Sub-disciplines should be branches, and specific subjects should be leaves.
-Ensure the JSON is valid and can be parsed without errors. Include multiple levels of hierarchy.
-Each node in the JSON should have a "name" key representing the subject and a potentially empty "children" array representing its subtopics.
-The output MUST be a valid JSON string. Do not include any other text, explanations, or markdown formatting before or after the JSON object.
+Your SOLE task is to generate a JSON string representing a tree graph of subjects.
+The root node MUST be the field of study itself.
+Sub-disciplines MUST be branches, and specific subjects MUST be leaves.
+The JSON MUST be valid and parsable. Include multiple levels of hierarchy.
+Each node in the JSON MUST have a "name" key (string) and a "children" key (array of nodes). If a node has no subtopics, its "children" array MUST be empty ([]).
+Your response MUST contain ONLY the JSON object itself, starting with '{' and ending with '}'.
+ABSOLUTELY NO other text, conversation, explanations, apologies, or markdown formatting (like \`\`\`json ... \`\`\`) should be present in your output.
+STRICTLY ADHERE to providing only the raw JSON.
 
-Example of a valid JSON tree structure:
+Example of the required JSON tree structure:
 {
   "name": "Computer Science",
   "children": [
@@ -51,33 +53,36 @@ Example of a valid JSON tree structure:
       "name": "Artificial Intelligence",
       "children": [
         {
-          "name": "Machine Learning"
+          "name": "Machine Learning",
+          "children": []
         },
         {
-          "name": "Deep Learning"
+          "name": "Deep Learning",
+          "children": []
         }
       ]
     },
     {
-      "name": "Data Structures and Algorithms"
+      "name": "Data Structures and Algorithms",
+      "children": []
     }
   ]
 }`,
     },
     {
       role: 'user',
-      content: `Generate a subject tree for the field of study: "${input.fieldOfStudy}". Output only the JSON object.`,
+      content: `Generate a valid JSON subject tree for the field of study: "${input.fieldOfStudy}". Your entire response must be only the JSON object as specified in the system prompt.`,
     },
   ];
 
   try {
     const stream = await cerebras.chat.completions.create({
       messages: messages,
-      model: 'qwen-3-32b', // As per user's reference
+      model: 'qwen-3-32b',
       stream: true,
-      max_completion_tokens: 16382, // As per user's reference
-      temperature: 0.7, // As per user's reference
-      top_p: 0.95, // As per user's reference
+      max_completion_tokens: 16382,
+      temperature: 0.7,
+      top_p: 0.95,
     });
 
     let fullResponse = '';
@@ -90,25 +95,49 @@ Example of a valid JSON tree structure:
         throw new Error("Cerebras API returned an empty response. The model might not have been able to generate content for the given field of study.");
     }
     
-    // Basic validation that it's likely JSON. More robust parsing happens in page.tsx
-    // This helps catch non-JSON responses early.
-    const trimmedResponse = fullResponse.trim();
-    if (!(trimmedResponse.startsWith('{') && trimmedResponse.endsWith('}')) && !(trimmedResponse.startsWith('[') && trimmedResponse.endsWith(']'))) {
-        console.error("Cerebras API did not return a JSON-like structure:", trimmedResponse.substring(0, 500));
-        throw new Error(`Cerebras API response does not appear to be a valid JSON object or array. Response (partial): ${trimmedResponse.substring(0, 200)}`);
+    let jsonString = fullResponse.trim();
+
+    // Attempt to extract JSON if it's embedded
+    // Case 1: ```json ... ```
+    const markdownJsonMatch = jsonString.match(/```json\s*([\s\S]*?)\s*```/);
+    if (markdownJsonMatch && markdownJsonMatch[1]) {
+        jsonString = markdownJsonMatch[1].trim();
+    } else {
+        // Case 2: Find first '{' and last '}' or first '[' and last ']'
+        const firstBrace = jsonString.indexOf('{');
+        const lastBrace = jsonString.lastIndexOf('}');
+        const firstBracket = jsonString.indexOf('[');
+        const lastBracket = jsonString.lastIndexOf(']');
+
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+            // Prefer object if both object and array-like structures are plausible from extraction
+            jsonString = jsonString.substring(firstBrace, lastBrace + 1);
+        } else if (firstBracket !== -1 && lastBracket > firstBracket) {
+            jsonString = jsonString.substring(firstBracket, lastBracket + 1);
+        }
+        // If neither, jsonString remains fullResponse.trim()
+    }
+    
+    // Basic validation that the (potentially extracted) string is likely JSON.
+    if (!(jsonString.startsWith('{') && jsonString.endsWith('}')) && !(jsonString.startsWith('[') && jsonString.endsWith(']'))) {
+        console.error("Cerebras API response, after attempting extraction, does not appear to be a valid JSON object or array. Original response (partial):", fullResponse.substring(0, 500) ,"Extracted (partial):", jsonString.substring(0,200));
+        throw new Error(`Cerebras API response does not appear to be a valid JSON object or array. Original response (partial for debugging): ${fullResponse.substring(0, 200)}`);
     }
 
-    return { treeData: trimmedResponse };
+    return { treeData: jsonString };
 
   } catch (error: any) {
     console.error('Error calling Cerebras API:', error);
-    // Attempt to provide a more specific error message if available
     const errorMessage = error?.error?.message || error?.message || "An unknown error occurred while communicating with Cerebras API.";
     if (error.status === 401) {
          throw new Error("Cerebras API authentication failed (401). Check your CEREBRAS_API_KEY.");
     }
     if (error.status === 429) {
         throw new Error("Cerebras API rate limit exceeded (429). Please try again later.");
+    }
+    // Re-throw other errors, potentially enriched, or use the already specific error message
+    if (error instanceof Error && (error.message.startsWith("Cerebras API returned an empty response") || error.message.startsWith("Cerebras API response does not appear to be a valid JSON"))) {
+        throw error; // Re-throw our custom errors
     }
     throw new Error(`Cerebras API error: ${errorMessage}`);
   }
