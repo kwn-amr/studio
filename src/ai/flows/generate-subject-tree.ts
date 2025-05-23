@@ -2,16 +2,14 @@
 'use server';
 
 /**
- * @fileOverview Generates a tree graph of subjects related to a field of study using Cerebras AI.
+ * @fileOverview Generates a tree graph of subjects related to a field of study using OpenRouter.
  *
  * - generateSubjectTree - A function that handles the generation of the subject tree.
  * - GenerateSubjectTreeInput - The input type for the generateSubjectTree function.
  * - GenerateSubjectTreeOutput - The return type for the generateSubjectTree function.
  */
 
-import Cerebras from '@cerebras/cerebras_cloud_sdk';
-import type { ChatCompletionMessageParam } from '@cerebras/cerebras_cloud_sdk/resources/chat/completions';
-
+import type { TreeNodeData } from '@/types'; // Assuming TreeNodeData is defined here
 
 export interface GenerateSubjectTreeInput {
   fieldOfStudy: string;
@@ -21,236 +19,148 @@ export interface GenerateSubjectTreeOutput {
   treeData: string; // JSON string
 }
 
-export async function generateSubjectTree(input: GenerateSubjectTreeInput): Promise<GenerateSubjectTreeOutput> {
-  const apiKey = process.env.CEREBRAS_API_KEY;
+// Define the JSON schema for the expected output structure (root node)
+// This helps OpenRouter's `response_format` ensure the top-level structure.
+// The prompt will guide the recursive generation of children.
+const subjectTreeJsonSchema = {
+  type: "object",
+  properties: {
+    name: {
+      type: "string",
+      description: "The name of the main field of study (root node)."
+    },
+    children: {
+      type: "array",
+      description: "An array of direct sub-disciplines or main topics. Each item in this array should also be an object with 'name' (string) and 'children' (array) properties, recursively.",
+      items: {
+        type: "object",
+        properties: {
+            name: {type: "string"},
+            children: {type: "array"}
+        },
+        required: ["name"]
+      }
+    }
+  },
+  required: ["name", "children"] // Make children required at the root, even if empty.
+};
 
-  if (!apiKey) {
-    console.error('CEREBRAS_API_KEY is not set.');
-    throw new Error('Cerebras API key is not configured. Please set CEREBRAS_API_KEY in your environment variables.');
+
+export async function generateSubjectTree(input: GenerateSubjectTreeInput): Promise<GenerateSubjectTreeOutput> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey || apiKey === "your_openrouter_key_here") {
+    console.error('OPENROUTER_API_KEY is not set or is the default placeholder.');
+    throw new Error('OpenRouter API key is not configured. Please set OPENROUTER_API_KEY in your .env file.');
   }
 
-  const cerebras = new Cerebras({
-    apiKey: apiKey,
-  });
+  const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
 
-  const messages: ChatCompletionMessageParam[] = [
+  const messages = [
     {
       role: 'system',
-      content: `You are an expert in structuring fields of study into comprehensive and detailed tree graphs.
-Your SOLE task is to generate a JSON string representing an extensive tree graph of subjects.
+      content: `You are an expert in structuring fields of study into comprehensive JSON tree graphs.
+Your SOLE task is to generate a JSON string representing an extensive tree graph.
 The root node MUST be the field of study itself.
-Sub-disciplines MUST be branches, and specific subjects, concepts, or theories MUST be leaves.
+Each node in the JSON MUST be an object with a "name" key (string value) and a "children" key (array of node objects).
+If a node has no subtopics, its "children" array MUST be empty ([]).
 The tree MUST be highly detailed, featuring multiple levels of hierarchy.
 It should span from the most foundational, introductory concepts to more specialized, advanced, or even cutting-edge research topics within the field. Aim for significant depth and breadth.
-The JSON output MUST be valid and parsable. Each node in the JSON MUST have a "name" key (string) and a "children" key (array of nodes). If a node has no subtopics, its "children" array MUST be empty ([]).
 Your entire response MUST be *only* the raw JSON text representing the tree object.
-Do NOT include any other explanatory text, conversation, apologies, or markdown formatting (like \`\`\`json ... \`\`\`) before or after the single, complete JSON object.
-
-Example of the required JSON tree structure:
-{
-  "name": "Physics",
-  "children": [
-    {
-      "name": "Classical Mechanics",
-      "children": [
-        { "name": "Newtonian Mechanics", "children": [
-            { "name": "Newton's Laws of Motion", "children": [] },
-            { "name": "Work and Energy", "children": [] }
-          ]
-        },
-        { "name": "Lagrangian Mechanics", "children": [] },
-        { "name": "Hamiltonian Mechanics", "children": [] }
-      ]
-    },
-    {
-      "name": "Quantum Mechanics",
-      "children": [
-        { "name": "Foundations of Quantum Mechanics", "children": [
-            { "name": "Wave-particle duality", "children": [] },
-            { "name": "Schrödinger Equation", "children": [] }
-          ]
-        },
-        { "name": "Quantum Field Theory", "children": [
-            { "name": "Quantum Electrodynamics (QED)", "children": [] }
-          ]
-        },
-        { "name": "String Theory", "children": [] }
-      ]
-    },
-    {
-      "name": "Thermodynamics and Statistical Mechanics",
-      "children": []
-    }
-  ]
-}`,
+Do NOT include any other explanatory text, conversation, apologies, or markdown formatting (like \`\`\`json ... \`\`\`) before or after the single, complete JSON object.`
     },
     {
       role: 'user',
-      content: `Generate a valid, highly detailed, and comprehensive JSON subject tree for the field of study: "${input.fieldOfStudy}". Your entire response must be only the JSON object as specified in the system prompt. Ensure significant depth and breadth, from foundational to advanced topics.`,
+      content: `Generate a valid, highly detailed, and comprehensive JSON subject tree for the field of study: "${input.fieldOfStudy}". Ensure your entire response is only the JSON object as specified.`,
     },
   ];
 
+  const requestBody = {
+    model: "meta-llama/llama-3.3-70b-instruct", // As per user's example
+    provider: { // As per user's example
+        only: ["Cerebras"]
+    },
+    messages: messages,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "subject_tree_schema",
+        strict: true,
+        schema: subjectTreeJsonSchema
+      }
+    },
+    temperature: 0.5, // Similar to previous Cerebras setting
+    top_p: 0.95,      // Similar to previous Cerebras setting
+    max_tokens: 4096, // Adjusted for Llama 3.3 on OpenRouter
+  };
+
   try {
-    const stream = await cerebras.chat.completions.create({
-      messages: messages,
-      model: 'qwen-3-32b',
-      stream: true,
-      max_completion_tokens: 16382,
-      temperature: 0.5, 
-      top_p: 0.95,
+    const response = await fetch(openRouterUrl, {
+      method: 'POST',
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        // OpenRouter might appreciate these headers:
+        // "HTTP-Referer": "YOUR_SITE_URL", // Optional: Replace with your app's URL
+        // "X-Title": "Subject Arbor", // Optional: Replace with your app's name
+      },
+      body: JSON.stringify(requestBody),
     });
 
-    let fullResponse = '';
-    for await (const chunk of stream) {
-      fullResponse += chunk.choices[0]?.delta?.content || '';
+    if (!response.ok) {
+      const errorBody = await response.text(); // Use .text() first to avoid JSON parse error if body isn't JSON
+      let errorMessage = `OpenRouter API request failed with status ${response.status}: ${response.statusText}.`;
+      try {
+        const parsedError = JSON.parse(errorBody);
+        errorMessage += ` Details: ${parsedError.error?.message || errorBody}`;
+      } catch (e) {
+        errorMessage += ` Details: ${errorBody}`;
+      }
+      console.error(errorMessage, "Request body:", JSON.stringify(requestBody, null, 2).substring(0, 500)); // Log part of the request for debugging
+      
+      if (response.status === 401) {
+        throw new Error("OpenRouter API authentication failed (401). Check your OPENROUTER_API_KEY.");
+      }
+      if (response.status === 429) {
+        throw new Error("OpenRouter API rate limit exceeded (429). Please try again later or check your plan.");
+      }
+      if (response.status === 400 && errorBody.includes("provider")) {
+        throw new Error(`OpenRouter API error (400): Problem with model provider configuration. The model 'meta-llama/llama-3.3-70b-instruct' might not be available from the specified provider or the provider configuration is incorrect. Details: ${errorBody.substring(0,300)}`);
+      }
+       if (response.status === 400 && errorBody.includes("response_format")) {
+        throw new Error(`OpenRouter API error (400): Problem with response_format or JSON schema. Details: ${errorBody.substring(0,300)}`);
+      }
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+
+    if (!result.choices || result.choices.length === 0 || !result.choices[0].message || !result.choices[0].message.content) {
+      console.error('OpenRouter API response is missing expected content structure:', result);
+      throw new Error('OpenRouter API response did not contain the expected subject tree data.');
+    }
+
+    const treeDataString = result.choices[0].message.content;
+
+    // With response_format: { type: "json_schema", strict: true },
+    // the content should be a clean JSON string.
+    // Basic validation that it looks like JSON.
+    if (!(treeDataString.trim().startsWith('{') && treeDataString.trim().endsWith('}'))) {
+        console.error("OpenRouter response content is not a valid JSON object string:", treeDataString.substring(0,500));
+        throw new Error("AI response was not a valid JSON object string, despite requesting structured output.");
     }
     
-    console.log("Raw Cerebras fullResponse (truncated):", fullResponse.substring(0, 500));
-
-
-    if (!fullResponse.trim()) {
-        console.warn("Cerebras API returned an empty or whitespace-only response for input:", input.fieldOfStudy);
-        throw new Error("Cerebras API returned an empty response. The model might not have been able to generate content for the given field of study.");
-    }
-    
-    let textToParse = fullResponse.trim();
-
-    // Attempt to extract content from markdown block first, as it's often more reliable
-    const markdownJsonMatch = textToParse.match(/```json\s*([\s\S]*?)\s*```/s);
-    if (markdownJsonMatch && markdownJsonMatch[1]) {
-        textToParse = markdownJsonMatch[1].trim();
-    } else {
-        // If no markdown block, aggressively remove common AI conversational fluff and echoed instructions.
-        // Order matters: remove broad patterns first.
-        const patternsToRemove = [
-            /^<response>|<\/response>$/g, // Cerebras might wrap in <response> tags
-            /^[\s\S]*?<think>[\s\S]*?<\/think>\s*/i, // Remove anything up to and including <think>...</think>
-            /^\s*Okay, here is the JSON(?: output| object| response)?[.:\s]*/i,
-            /^\s*Sure, here is the JSON(?: output| object| response)?[.:\s]*/i,
-            /^\s*Here's the JSON(?: output| object| response)?[.:\s]*/i,
-            /^\s*The JSON(?: output| object| response) is[.:\s]*/i,
-            /^\s*I have generated the JSON object as requested\s*[.:\s]*/i,
-            // Remove specific echoed instructions if they appear as full lines
-            /^\s*Your response MUST contain ONLY the JSON object itself.*$/gim,
-            /^\s*The root node MUST be the field of study itself.*$/gim,
-            /^\s*STRICTLY ADHERE to providing only the raw JSON.*$/gim,
-            /^\s*ABSOLUTELY NO other text.*$/gim,
-            /^\s*Example of the required JSON tree structure:.*$/gim, // Remove example line if echoed
-            // Remove any remaining ```json or ``` if they weren't caught by the main markdown match
-            /^\s*```json\s*/,
-            /\s*```\s*$/,
-        ];
-        
-        for (const regex of patternsToRemove) {
-            textToParse = textToParse.replace(regex, '').trim();
-        }
-    }
-    
-    // After all cleaning, if textToParse is empty, then nothing usable was found.
-    if (!textToParse) {
-        console.error("After cleaning, the response string is empty. Original response (partial):", fullResponse.substring(0, 500));
-        throw new Error("The AI's response was entirely non-JSON conversational text or echoed instructions.");
-    }
-
-    let extractedJson: string | null = null;
-    let openChar: '{' | '[' | undefined = undefined;
-    let closeChar: '}' | ']' | undefined = undefined;
-    let startIndex = -1;
-
-    const firstBrace = textToParse.indexOf('{');
-    const firstBracket = textToParse.indexOf('[');
-
-    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
-        openChar = '{';
-        closeChar = '}';
-        startIndex = firstBrace;
-    } else if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
-        openChar = '[';
-        closeChar = ']';
-        startIndex = firstBracket;
-    }
-
-    if (openChar && closeChar && startIndex !== -1) {
-        let balance = 0;
-        let inString = false;
-        let escapeNext = false;
-        
-        for (let i = startIndex; i < textToParse.length; i++) {
-            const char = textToParse[i];
-
-            if (escapeNext) {
-                escapeNext = false;
-                continue;
-            }
-            if (char === '\\') {
-                escapeNext = true;
-                continue;
-            }
-            if (char === '"') { 
-                inString = !inString;
-            }
-
-            if (!inString) {
-                if (char === openChar) {
-                    balance++;
-                } else if (char === closeChar) {
-                    balance--;
-                }
-            }
-
-            if (balance === 0 && i >= startIndex) { 
-                extractedJson = textToParse.substring(startIndex, i + 1);
-                break; 
-            }
-        }
-    }
-    
-    if (!extractedJson) {
-        console.error("Could not extract a valid JSON structure using brace/bracket balancing. Cleaned textToParse (partial):", textToParse.substring(0, 500) ,"Original response (partial):", fullResponse.substring(0, 500));
-        throw new Error(`Cerebras API response, after attempting extraction, does not appear to contain a parsable JSON object or array. Cleaned text (partial): ${textToParse.substring(0, 200)}`);
-    }
-    
-    const finalJsonString = extractedJson;
-    console.log("Attempting to parse finalJsonString (truncated):", finalJsonString.substring(0,500));
-
-
-    if (!(finalJsonString.startsWith('{') && finalJsonString.endsWith('}')) && !(finalJsonString.startsWith('[') && finalJsonString.endsWith(']'))) {
-        console.error("Extracted JSON segment does not start/end with braces/brackets. Extracted (partial):", finalJsonString.substring(0,200));
-        throw new Error(`Failed to properly extract JSON. Extracted segment (partial for debugging): ${finalJsonString.substring(0, 200)}`);
-    }
-
-    try {
-        const parsedForBasicValidation = JSON.parse(finalJsonString);
-        if (typeof parsedForBasicValidation.name !== 'string' || !Array.isArray(parsedForBasicValidation.children)) {
-            console.warn("Extracted JSON does not have the expected root structure (name: string, children: array). Parsed (partial):", finalJsonString.substring(0, 300));
-        }
-    } catch (e: any) {
-        console.error("The extracted JSON string is invalid. Full finalJsonString (potentially very long, logging first 1000 chars):", finalJsonString.substring(0,1000), "Error:", e);
-        throw new Error(`The AI response, even after extraction, was not valid JSON. Extracted segment (partial for debugging): ${finalJsonString.substring(0, 200)}. Original error: ${e.message}`);
-    }
-
-    return { treeData: finalJsonString };
+    // Further validation (is it parseable, does it have 'name'?) will happen in page.tsx
+    // and the strict schema should have been enforced by OpenRouter.
+    console.log("Received JSON string from OpenRouter (truncated):", treeDataString.substring(0, 500));
+    return { treeData: treeDataString };
 
   } catch (error: any) {
-    console.error('Error calling Cerebras API or processing its response:', error);
-    const errorMessage = error?.error?.message || error?.message || "An unknown error occurred while communicating with Cerebras API.";
-    if (error.status === 401) {
-         throw new Error("Cerebras API authentication failed (401). Check your CEREBRAS_API_KEY.");
+    console.error('Error calling OpenRouter API or processing its response:', error);
+    // Re-throw specific errors or a generic one
+    if (error.message.startsWith("OpenRouter API") || error.message.startsWith("AI response was not")) {
+        throw error;
     }
-    if (error.status === 429) {
-        throw new Error("Cerebras API rate limit exceeded (429). Please try again later.");
-    }
-    // Re-throw custom errors or specific API errors directly
-    if (error instanceof Error && (
-        error.message.startsWith("Cerebras API returned an empty response") || 
-        error.message.includes("does not appear to contain a parsable JSON") || 
-        error.message.startsWith("Failed to properly extract JSON") || 
-        error.message.includes("was not valid JSON") ||
-        error.message.startsWith("The AI's response was entirely non-JSON")
-        )) {
-        throw error; 
-    }
-    throw new Error(`Cerebras API processing error: ${errorMessage}`);
+    throw new Error(`OpenRouter API processing error: ${error.message || "An unknown error occurred."}`);
   }
 }
-
