@@ -179,7 +179,7 @@ Example of the required JSON tree structure:
 
 Provide ONLY the JSON object.`;
 
-  const modelToUse = "meta-llama/llama-3.3-70b-instruct"; 
+  const modelToUse = "qwen/qwen3-32b"; 
   const requestPayload = {
     model: modelToUse, 
     provider: { 
@@ -190,9 +190,9 @@ Provide ONLY the JSON object.`;
       { role: "user", content: `Generate a valid, highly detailed, and comprehensive JSON subject tree for the field of study: "${input.fieldOfStudy}". Ensure the root node's "name" is exactly "${input.fieldOfStudy}". Adhere strictly to all JSON formatting rules.` }
     ],
     // Removed response_format due to Cerebras provider limitations with recursive schemas
-    temperature: 0.2, 
-    max_tokens: 4000, 
-    top_p: 0.9,
+    temperature: 0.7, 
+    max_tokens: 4048, 
+    top_p: 0.95,
   };
 
   console.log("OpenRouter Request Payload (partial messages, no schema):", JSON.stringify({...requestPayload, messages: [{role: "system", content: "System prompt summarized..."}, requestPayload.messages[1]]}, null, 2));
