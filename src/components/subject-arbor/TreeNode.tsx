@@ -15,7 +15,7 @@ interface TreeNodeProps {
 }
 
 export function TreeNode({ node, level, defaultExpanded = false }: TreeNodeProps) {
-  const [isExpanded, setIsExpanded] = React.useState(level === 0 ? true : defaultExpanded); // Root node expanded by default
+  const [isExpanded, setIsExpanded] = React.useState(defaultExpanded);
 
   const hasChildren = node.children && node.children.length > 0;
 
