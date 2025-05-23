@@ -55,6 +55,9 @@ body {
     --sidebar-accent-foreground: 220 100% 98%;
     --sidebar-border: 260 50% 85%;
     --sidebar-ring: 220 83% 70%;
+
+    /* D3 Graph Specific Variables */
+    --node-radius: 6px;
   }
 
   .dark {
@@ -103,6 +106,9 @@ body {
     --sidebar-accent-foreground: 220 25% 15%;
     --sidebar-border: 260 20% 30%;
     --sidebar-ring: 220 83% 70%;
+
+    /* D3 Graph Specific Variables */
+    --node-radius: 6px;
   }
 }
 
@@ -116,3 +122,65 @@ body {
     -moz-osx-font-smoothing: grayscale;
   }
 }
+
+/* D3 Graph Styles */
+.node circle {
+  fill: hsl(var(--card)); /* Use card background for nodes */
+  stroke: hsl(var(--primary));
+  stroke-width: 1.5px;
+  cursor: pointer;
+  transition: fill 0.2s ease, stroke 0.2s ease, r 0.2s ease;
+}
+
+.node circle.collapsed {
+  fill: hsl(var(--primary-foreground)); /* Lighter fill for collapsed, distinct from expanded */
+  stroke: hsl(var(--primary));
+}
+.node circle.expanded {
+  fill: hsl(var(--background)); /* Background color for expanded nodes */
+  stroke: hsl(var(--primary));
+}
+
+.node circle.node-leaf {
+  fill: hsl(var(--accent));
+  stroke: hsl(var(--accent-foreground));
+}
+
+.node circle.hovered {
+  stroke-width: 2.5px;
+  stroke: hsl(var(--ring)); /* Ring color on hover */
+  r: calc(var(--node-radius) + 2px); /* Slightly larger on hover */
+}
+
+.node text {
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: 11px; /* Slightly smaller for potentially long names */
+  fill: hsl(var(--foreground));
+  paint-order: stroke; /* Ensure stroke is behind fill for halo */
+  stroke: hsl(var(--background));
+  stroke-width: 3px; /* Halo width for better readability */
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  pointer-events: none; /* Text should not block mouse events on the circle */
+  dominant-baseline: middle; /* Align text vertically */
+}
+
+.link {
+  fill: none;
+  stroke: hsl(var(--border));
+  stroke-width: 1px;
+  stroke-opacity: 0.7;
+  transition: stroke 0.2s ease, stroke-width 0.2s ease;
+}
+
+.link.highlighted {
+  stroke: hsl(var(--primary));
+  stroke-width: 2px;
+  stroke-opacity: 1;
+}
+
+.d3-tooltip {
+  /* Basic structure defined inline in D3SubjectGraph.tsx for dynamic positioning.
+     Additional static styles can go here if needed. */
+}
+

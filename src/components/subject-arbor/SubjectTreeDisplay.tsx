@@ -4,7 +4,7 @@
 import * as React from 'react';
 import type { TreeNodeData } from '@/types';
 import { TreeNode } from './TreeNode';
-import { SubjectNodeGraph } from './SubjectNodeGraph';
+import { D3SubjectGraph } from './D3SubjectGraph'; // Changed import
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,7 +32,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: Subjec
     URL.revokeObjectURL(url);
   };
 
-  const commonHeightClass = "h-[calc(100vh-22rem)] md:h-[calc(100vh-16rem)]"; // Adjusted for tabs
+  const commonHeightClass = "h-[calc(100vh-22rem)] md:h-[calc(100vh-16rem)]";
 
   return (
     <Card className="h-full flex flex-col">
@@ -71,7 +71,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: Subjec
               </ScrollArea>
             </TabsContent>
             <TabsContent value="graph" className={`flex-grow overflow-hidden ${commonHeightClass}`}>
-              <SubjectNodeGraph treeData={treeData} />
+              <D3SubjectGraph treeData={treeData} />
             </TabsContent>
           </Tabs>
         )}
