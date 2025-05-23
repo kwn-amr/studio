@@ -118,7 +118,7 @@ Do NOT include any other explanatory text, conversation, apologies, or markdown 
   const userPrompt = `Generate the JSON subject tree for "${input.fieldOfStudy}" according to the schema.`;
 
   const requestPayload = {
-    model: "nousresearch/nous-hermes-2-mixtral-8x7b-dpo", // Changed model
+    model: "qwen/qwen3-30b-a3b", // Changed model
     // No provider field - let OpenRouter select one.
     messages: [
       { role: 'system', content: systemPrompt },
