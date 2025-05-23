@@ -47,6 +47,8 @@ export default function SubjectArborPage() {
           let description = "Received data from the AI is not a valid JSON tree structure. Please try again or a different query.";
           if (parseError.message.includes("does not match the expected tree structure")) {
             description = parseError.message;
+          } else if (parseError instanceof SyntaxError && result.treeData) {
+             description = `The AI's response started like valid JSON, but contains an error. Received: ${result.treeData.substring(0,100)}... Error: ${parseError.message}`;
           }
           toast({
             title: "Parsing Error",
@@ -65,7 +67,7 @@ export default function SubjectArborPage() {
       let descriptiveMessage = "An unexpected error occurred while generating the subject tree. Please try again.";
 
       if (error && typeof error.message === 'string') {
-        const msg = error.message; // No toLowerCase here, preserve case for specific error messages
+        const msg = error.message; 
         
         if (msg.includes("API authentication failed") || msg.includes("OPENROUTER_API_KEY")) {
           descriptiveMessage = "API authentication failed. Please check your OpenRouter API key in the .env file or contact support.";
@@ -77,13 +79,13 @@ export default function SubjectArborPage() {
             descriptiveMessage = "The AI's response was not a valid JSON object string, even after requesting structured output. Please try again.";
         } else if (msg.includes("does not match the expected tree structure")) {
             descriptiveMessage = "The AI's response was valid JSON but did not match the expected tree structure (e.g., missing 'name' or 'children' at the root).";
+        } else if (msg.includes("Problem with response_format or JSON schema")) {
+            descriptiveMessage = "There was an issue with the JSON structure requested from the AI. The AI might not have understood the format. Details: " + msg.split("Details: ")[1];
         } else if (msg.startsWith("OpenRouter API") || msg.startsWith("AI response")) {
-            // Use the message as is if it's a specific error from our flow or OpenRouter client
             descriptiveMessage = error.message;
-        } else if (msg.length > 0 && msg.length < 300) { // Generic JS error message if it's reasonable
+        } else if (msg.length > 0 && msg.length < 300) { 
              descriptiveMessage = error.message;
         }
-        // else, the default generic message "An unexpected error occurred..." remains.
       }
 
       toast({
@@ -126,4 +128,3 @@ export default function SubjectArborPage() {
     </div>
   );
 }
-

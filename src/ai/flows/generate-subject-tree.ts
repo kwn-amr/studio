@@ -32,13 +32,15 @@ const subjectTreeJsonSchema = {
     children: {
       type: "array",
       description: "An array of direct sub-disciplines or main topics. Each item in this array should also be an object with 'name' (string) and 'children' (array) properties, recursively.",
-      items: {
+      items: { // <<<< CORRECTED: Added 'items' definition
         type: "object",
         properties: {
             name: {type: "string"},
-            children: {type: "array"}
+            children: {type: "array"} // Model will fill this recursively based on prompt guidance.
+                                    // For very strict schema validation, this could be $ref to itself,
+                                    // but this simplified version is often more robust with LLMs.
         },
-        required: ["name"]
+        required: ["name"] // 'children' in sub-items can be empty, so not required here.
       }
     }
   },
@@ -127,7 +129,7 @@ Do NOT include any other explanatory text, conversation, apologies, or markdown 
       if (response.status === 400 && errorBody.includes("provider")) {
         throw new Error(`OpenRouter API error (400): Problem with model provider configuration. The model 'meta-llama/llama-3.3-70b-instruct' might not be available from the specified provider or the provider configuration is incorrect. Details: ${errorBody.substring(0,300)}`);
       }
-       if (response.status === 400 && errorBody.includes("response_format")) {
+       if (response.status === 400 && (errorBody.includes("response_format") || errorBody.includes("json_schema") || errorBody.includes("wrong_api_format"))) {
         throw new Error(`OpenRouter API error (400): Problem with response_format or JSON schema. Details: ${errorBody.substring(0,300)}`);
       }
       throw new Error(errorMessage);
