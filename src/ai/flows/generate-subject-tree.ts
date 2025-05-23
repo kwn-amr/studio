@@ -36,11 +36,13 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
   const messages: ChatCompletionMessageParam[] = [
     {
       role: 'system',
-      content: `You are an expert in structuring fields of study into tree graphs.
-Your SOLE task is to generate a JSON string representing a tree graph of subjects.
+      content: `You are an expert in structuring fields of study into comprehensive and detailed tree graphs.
+Your SOLE task is to generate a JSON string representing an extensive tree graph of subjects.
 The root node MUST be the field of study itself.
-Sub-disciplines MUST be branches, and specific subjects MUST be leaves.
-The JSON MUST be valid and parsable. Include multiple levels of hierarchy.
+Sub-disciplines MUST be branches, and specific subjects, concepts, or theories MUST be leaves.
+The tree MUST be highly detailed, featuring multiple levels of hierarchy.
+It should span from the most foundational, introductory concepts to more specialized, advanced, or even cutting-edge research topics within the field. Aim for significant depth and breadth.
+The JSON MUST be valid and parsable.
 Each node in the JSON MUST have a "name" key (string) and a "children" key (array of nodes). If a node has no subtopics, its "children" array MUST be empty ([]).
 Your response MUST contain ONLY the JSON object itself, starting with '{' and ending with '}'.
 ABSOLUTELY NO other text, conversation, explanations, apologies, or markdown formatting (like \`\`\`json ... \`\`\`) should be present in your output.
@@ -48,23 +50,37 @@ STRICTLY ADHERE to providing only the raw JSON.
 
 Example of the required JSON tree structure:
 {
-  "name": "Computer Science",
+  "name": "Physics",
   "children": [
     {
-      "name": "Artificial Intelligence",
+      "name": "Classical Mechanics",
       "children": [
-        {
-          "name": "Machine Learning",
-          "children": []
+        { "name": "Newtonian Mechanics", "children": [
+            { "name": "Newton's Laws of Motion", "children": [] },
+            { "name": "Work and Energy", "children": [] }
+          ] 
         },
-        {
-          "name": "Deep Learning",
-          "children": []
-        }
+        { "name": "Lagrangian Mechanics", "children": [] },
+        { "name": "Hamiltonian Mechanics", "children": [] }
       ]
     },
     {
-      "name": "Data Structures and Algorithms",
+      "name": "Quantum Mechanics",
+      "children": [
+        { "name": "Foundations of Quantum Mechanics", "children": [
+            { "name": "Wave-particle duality", "children": [] },
+            { "name": "Schrödinger Equation", "children": [] }
+          ]
+        },
+        { "name": "Quantum Field Theory", "children": [
+            { "name": "Quantum Electrodynamics (QED)", "children": [] }
+          ] 
+        },
+        { "name": "String Theory", "children": [] }
+      ]
+    },
+    {
+      "name": "Thermodynamics and Statistical Mechanics",
       "children": []
     }
   ]
@@ -72,7 +88,7 @@ Example of the required JSON tree structure:
     },
     {
       role: 'user',
-      content: `Generate a valid JSON subject tree for the field of study: "${input.fieldOfStudy}". Your entire response must be only the JSON object as specified in the system prompt.`,
+      content: `Generate a valid, highly detailed, and comprehensive JSON subject tree for the field of study: "${input.fieldOfStudy}". Your entire response must be only the JSON object as specified in the system prompt. Ensure significant depth and breadth, from foundational to advanced topics.`,
     },
   ];
 
@@ -81,8 +97,8 @@ Example of the required JSON tree structure:
       messages: messages,
       model: 'qwen-3-32b',
       stream: true,
-      max_completion_tokens: 16382,
-      temperature: 0.7,
+      max_completion_tokens: 16382, // Maximize token limit for larger trees
+      temperature: 0.5, // Slightly lower temperature for more focused, structured output
       top_p: 0.95,
     });
 
@@ -98,14 +114,10 @@ Example of the required JSON tree structure:
     
     let textToParse = fullResponse.trim();
 
-    // Attempt to extract JSON from ```json ... ``` block first
-    // Use /s flag for dotall to handle newlines within the JSON block
     const markdownJsonMatch = textToParse.match(/```json\s*([\s\S]*?)\s*```/s);
     if (markdownJsonMatch && markdownJsonMatch[1]) {
         textToParse = markdownJsonMatch[1].trim();
     }
-    // Now, `textToParse` is either the content of the markdown block or the original trimmed response.
-    // We need to find the first actual JSON object/array within this string.
 
     let extractedJson: string | null = null;
     let openChar: '{' | '[' | undefined = undefined;
@@ -120,6 +132,7 @@ Example of the required JSON tree structure:
         closeChar = '}';
         startIndex = firstBrace;
     } else if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+        // This case is less likely for the root of our expected JSON, but included for completeness
         openChar = '[';
         closeChar = ']';
         startIndex = firstBracket;
@@ -141,13 +154,11 @@ Example of the required JSON tree structure:
                 escapeNext = true;
                 continue;
             }
-            // This simple string parsing handles quoted strings.
-            // It doesn't account for all unicode escape nuances but is common.
             if (char === '"') { 
                 inString = !inString;
             }
 
-            if (!inString) { // Only count braces/brackets if not inside a string
+            if (!inString) {
                 if (char === openChar) {
                     balance++;
                 } else if (char === closeChar) {
@@ -156,9 +167,8 @@ Example of the required JSON tree structure:
             }
 
             if (balance === 0 && i >= startIndex) { 
-                // We found a balanced structure from the startIndex.
                 extractedJson = textToParse.substring(startIndex, i + 1);
-                break; // Assume this is the complete JSON object/array
+                break; 
             }
         }
     }
@@ -170,11 +180,26 @@ Example of the required JSON tree structure:
     
     const finalJsonString = extractedJson;
 
-    // Final validation on the extracted segment
     if (!(finalJsonString.startsWith('{') && finalJsonString.endsWith('}')) && !(finalJsonString.startsWith('[') && finalJsonString.endsWith(']'))) {
         console.error("Extracted JSON segment does not start/end with braces/brackets. Extracted (partial):", finalJsonString.substring(0,200));
         throw new Error(`Failed to properly extract JSON. Extracted segment (partial for debugging): ${finalJsonString.substring(0, 200)}`);
     }
+
+    // Basic validation of tree structure (root name and children array)
+    try {
+        const parsedForBasicValidation = JSON.parse(finalJsonString);
+        if (typeof parsedForBasicValidation.name !== 'string' || !Array.isArray(parsedForBasicValidation.children)) {
+            console.warn("Extracted JSON does not have the expected root structure (name: string, children: array). Parsed (partial):", finalJsonString.substring(0, 300));
+            // Potentially throw, or let the page.tsx handle it if the user is okay with slightly malformed data sometimes.
+            // For now, we'll pass it through and let the main parsing catch structural issues deeper in the tree.
+        }
+    } catch (e) {
+        // This catch is if finalJsonString itself is not valid JSON, which shouldn't happen if extraction was perfect.
+        // The main JSON.parse in page.tsx will be the primary validator for the full structure.
+        console.error("The extracted JSON string is invalid. Extracted (partial):", finalJsonString.substring(0,300), e);
+        throw new Error(`The AI response, even after extraction, was not valid JSON. Extracted segment (partial for debugging): ${finalJsonString.substring(0, 200)}`);
+    }
+
 
     return { treeData: finalJsonString };
 
@@ -187,7 +212,7 @@ Example of the required JSON tree structure:
     if (error.status === 429) {
         throw new Error("Cerebras API rate limit exceeded (429). Please try again later.");
     }
-    if (error instanceof Error && (error.message.startsWith("Cerebras API returned an empty response") || error.message.includes("does not appear to contain a parsable JSON") || error.message.startsWith("Failed to properly extract JSON"))) {
+    if (error instanceof Error && (error.message.startsWith("Cerebras API returned an empty response") || error.message.includes("does not appear to contain a parsable JSON") || error.message.startsWith("Failed to properly extract JSON") || error.message.includes("was not valid JSON") )) {
         throw error; // Re-throw our custom errors
     }
     throw new Error(`Cerebras API error: ${errorMessage}`);
