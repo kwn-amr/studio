@@ -19,18 +19,20 @@ export default function SubjectArborPage() {
     setIsLoading(true);
     setFieldOfStudy(submittedField);
     setTreeData(null); // Clear previous tree
-    let result; // Define result here to be accessible in finally
-
+    
     try {
       toast({
         title: "Processing Request",
-        description: `Generating subject tree for "${submittedField}"...`,
+        description: `Generating subject tree for "${submittedField}"... This may take a moment.`,
       });
-      result = await generateSubjectTree({ fieldOfStudy: submittedField });
+      
+      const result = await generateSubjectTree({ fieldOfStudy: submittedField });
       
       if (result.treeData) {
         try {
+          // result.treeData is expected to be a string of JSON from the AI
           const parsedData = JSON.parse(result.treeData) as TreeNodeData;
+          
           // Basic validation of the parsed structure
           if (typeof parsedData.name !== 'string' || !Array.isArray(parsedData.children)) {
             console.error("Parsed data is missing 'name' or 'children' array at the root.", parsedData);
@@ -43,13 +45,15 @@ export default function SubjectArborPage() {
             variant: "default",
           });
         } catch (parseError: any) {
-          console.error("Failed to parse tree data:", parseError, "Received data:", result.treeData.substring(0, 500));
+          console.error("Failed to parse tree data string from AI:", parseError, "Received data string (partial):", result.treeData.substring(0, 500));
           setTreeData(null);
           let description = "Received data from the AI is not a valid JSON tree structure. Please try again or a different query.";
           if (parseError.message.includes("does not match the expected tree structure")) {
             description = parseError.message;
           } else if (parseError instanceof SyntaxError && result.treeData) {
-             description = `The AI's response started like valid JSON, but contains an error. Received: ${result.treeData.substring(0,100)}... Error: ${parseError.message}`;
+             description = `The AI's response was a string that could not be parsed as JSON. Received (partial): ${result.treeData.substring(0,100)}... Error: ${parseError.message}`;
+          } else {
+            description = `Error parsing AI's JSON response: ${parseError.message}`;
           }
           toast({
             title: "Parsing Error",
@@ -59,7 +63,7 @@ export default function SubjectArborPage() {
         }
       } else {
         // This case should ideally be caught by generateSubjectTree throwing an error
-        throw new Error("No tree data received from AI, though the call succeeded.");
+        throw new Error("No tree data string received from AI, though the call succeeded.");
       }
     } catch (error: any) {
       console.error("Error generating subject tree:", error);
@@ -70,19 +74,19 @@ export default function SubjectArborPage() {
       if (error && typeof error.message === 'string') {
         const msg = error.message; 
         
-        if (msg.includes("API authentication failed") || msg.includes("CEREBRAS_API_KEY")) {
-          descriptiveMessage = "API authentication failed. Please check your Cerebras API key in the .env file or contact support.";
+        if (msg.includes("API authentication failed") || msg.includes("OPENROUTER_API_KEY")) {
+          descriptiveMessage = "API authentication failed. Please check your OpenRouter API key in the .env file or contact support.";
         } else if (msg.includes("API rate limit exceeded")) {
-          descriptiveMessage = "API rate limit exceeded. Please try again later or check your Cerebras plan.";
-        } else if (msg.includes("Cerebras API key is not configured")) {
-           descriptiveMessage = "Cerebras API key is not configured. Please set CEREBRAS_API_KEY in your .env file.";
-        } else if (msg.includes("AI response was not a valid JSON object string") || msg.includes("Failed to extract a valid JSON object")) {
+          descriptiveMessage = "API rate limit exceeded. Please try again later or check your OpenRouter plan.";
+        } else if (msg.includes("OpenRouter API key is not configured")) {
+           descriptiveMessage = "OpenRouter API key is not configured. Please set OPENROUTER_API_KEY in your .env file.";
+        } else if (msg.includes("Problem with the JSON schema provided for response_format")) {
+            descriptiveMessage = "There was an issue with the JSON structure requested from the AI. Details: " + msg.split("Details: ")[1] || msg;
+        } else if (msg.includes("Failed to extract a valid JSON object") || msg.includes("was not valid JSON")) {
             descriptiveMessage = "The AI's response was not a valid JSON object string, even after requesting structured output. Please try again. Details: " + msg.split("Details: ")[1] || msg;
         } else if (msg.includes("does not match the expected tree structure")) {
             descriptiveMessage = "The AI's response was valid JSON but did not match the expected tree structure (e.g., missing 'name' or 'children' at the root).";
-        } else if (msg.includes("Problem with response_format or JSON schema") || msg.includes("was not valid JSON. Extracted segment")) {
-            descriptiveMessage = "There was an issue with the JSON structure produced or requested from the AI. Details: " + msg.split("Details: ")[1] || msg;
-        } else if (msg.startsWith("Cerebras API") || msg.startsWith("AI response")) {
+        } else if (msg.startsWith("OpenRouter API") || msg.startsWith("AI response")) {
             descriptiveMessage = error.message;
         } else if (msg.length > 0 && msg.length < 300) { 
              descriptiveMessage = error.message;
