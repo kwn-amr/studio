@@ -1,4 +1,2 @@
-import { config } from 'dotenv';
-config();
-
-import '@/ai/flows/generate-subject-tree.ts';
+// This file is no longer needed as Genkit is being removed.
+// It will be deleted.
