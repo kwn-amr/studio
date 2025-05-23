@@ -19,7 +19,7 @@ export interface GenerateSubjectTreeOutput {
 // Define the JSON schema for the expected output structure
 // This uses $defs for a proper recursive definition of the tree node.
 const subjectTreeJsonSchema = {
-  name: 'subject_tree_schema', // Name for the schema tool
+  name: 'subject_tree_schema',
   description: 'A hierarchical tree structure representing a field of study and its sub-topics. Each node has a name and an array of children nodes.',
   strict: true, // Enforce the schema strictly
   schema: {
@@ -29,18 +29,18 @@ const subjectTreeJsonSchema = {
         properties: {
           name: {
             type: 'string',
-            description: 'The name of the current subject, topic, or sub-topic.',
+            // description: 'The name of the current subject, topic, or sub-topic.', // Simplified
           },
           children: {
             type: 'array',
-            description: 'An array of sub-topics or children nodes. Should be an empty array if there are no sub-topics.',
+            // description: 'An array of sub-topics or children nodes. Should be an empty array if there are no sub-topics.', // Simplified
             items: {
-              $ref: '#/$defs/node', // Recursive reference to the 'node' definition
+              $ref: '#/$defs/node',
             },
           },
         },
         required: ['name', 'children'],
-        additionalProperties: false, // Disallow properties not defined in the schema
+        additionalProperties: false,
       },
     },
     // The root of the response should be a 'node' object
@@ -115,11 +115,10 @@ It should span from the most foundational, introductory concepts to more special
 Your entire response MUST be *only* the raw JSON text representing the tree object, conforming to the schema.
 Do NOT include any other explanatory text, conversation, apologies, or markdown formatting (like \`\`\`json ... \`\`\`) before or after the single, complete JSON object.`;
 
-  // User prompt can be simpler as the system prompt and schema define the task.
   const userPrompt = `Generate the JSON subject tree for "${input.fieldOfStudy}" according to the schema.`;
 
   const requestPayload = {
-    model: "meta-llama/llama-3.3-70b-instruct", // Model specified by user
+    model: "nousresearch/nous-hermes-2-mixtral-8x7b-dpo", // Changed model
     // No provider field - let OpenRouter select one.
     messages: [
       { role: 'system', content: systemPrompt },
@@ -129,25 +128,29 @@ Do NOT include any other explanatory text, conversation, apologies, or markdown 
       type: "json_schema",
       json_schema: subjectTreeJsonSchema,
     },
-    temperature: 0.4, // Lower temperature for more deterministic, schema-compliant output
-    // top_p: 0.95, // Often good to use one or the other (temp or top_p)
-    // max_tokens: 8000 // Consider if large outputs are consistently truncated. Model default is usually sufficient.
+    temperature: 0.4, 
+    // top_p: 0.95, 
+    // max_tokens: 8000 
   };
 
   try {
-    console.log("Sending request to OpenRouter with payload:", JSON.stringify(requestPayload, null, 2).substring(0,500) + "...");
+    console.log("Sending request to OpenRouter with payload (model and schema name only):", JSON.stringify({model: requestPayload.model, schema_name: requestPayload.response_format.json_schema.name }, null, 2));
+    // For more detailed logging of the payload if needed, uncomment below but be mindful of large schema:
+    // console.log("Full request payload (truncated schema):", JSON.stringify({...requestPayload, response_format: {...requestPayload.response_format, json_schema: "SCHEMA_TRUNCATED"}}, null, 2));
+
+
     const response = await fetch(openRouterUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': `http://localhost:9002`, // Replace with your actual site URL if deployed
-        'X-Title': `Subject Arbor`, // Replace with your actual app name
+        'HTTP-Referer': `http://localhost:9002`, 
+        'X-Title': `Subject Arbor`, 
       },
       body: JSON.stringify(requestPayload),
     });
 
-    const responseBodyText = await response.text(); // Get text first for better debugging
+    const responseBodyText = await response.text(); 
     
     if (!response.ok) {
       console.error('OpenRouter API Error Status:', response.status);
@@ -168,6 +171,8 @@ Do NOT include any other explanatory text, conversation, apologies, or markdown 
         errorMessage = `OpenRouter API error: Model not found (${requestPayload.model}).`;
       } else if (errorData.error?.message && (errorData.error.message.includes("Problem with response_format or JSON schema") || errorData.error.message.includes("Array fields require at least one of 'items' or 'prefixItems'"))) {
         errorMessage = `OpenRouter API error: Problem with the JSON schema provided for response_format. Details: ${errorData.error.message}`;
+      } else if (response.status === 400 && errorData.error?.message) { // Generic 400 with a message
+        errorMessage = `OpenRouter API error (400): ${errorData.error.message}`;
       }
       throw new Error(errorMessage);
     }
@@ -188,10 +193,7 @@ Do NOT include any other explanatory text, conversation, apologies, or markdown 
       throw new Error('OpenRouter API returned an unexpected response structure. No content found.');
     }
 
-    // The content should be a JSON string if json_schema is used and successful
     const jsonContentString = result.choices[0].message.content;
-
-    // Even with json_schema, models might add tiny bits of text or be wrapped in markdown.
     const extractedJson = extractJsonFromString(jsonContentString);
 
     if (!extractedJson) {
@@ -199,18 +201,15 @@ Do NOT include any other explanatory text, conversation, apologies, or markdown 
         throw new Error(`Failed to extract a valid JSON object from the AI's response content. The content might be malformed or empty. Received (partial): ${jsonContentString.substring(0,200)}`);
     }
     
-    // Validate if the extracted string is indeed parsable JSON
-    // This step is critical because `json_schema` mode should return valid JSON string in `content`.
-    // If `JSON.parse(extractedJson)` fails, it means the model didn't adhere to the schema despite `response_format`.
     try {
-        JSON.parse(extractedJson); // This is parsing the string *within* content.
+        JSON.parse(extractedJson); 
     } catch (e: any) {
         console.error("The extracted JSON string from OpenRouter (from choices[0].message.content) is invalid. Extracted (partial):", extractedJson.substring(0,300), e);
         throw new Error(`The AI response content, even after extraction, was not valid JSON. Extracted segment (partial for debugging): ${extractedJson.substring(0, 200)}. Original error: ${e.message}`);
     }
     
     console.log("Successfully extracted JSON string from OpenRouter (truncated):", extractedJson.substring(0, 500));
-    return { treeData: extractedJson }; // Return the JSON string
+    return { treeData: extractedJson };
 
   } catch (error: any) {
     console.error('Error calling OpenRouter API or processing its response:', error);
@@ -220,3 +219,5 @@ Do NOT include any other explanatory text, conversation, apologies, or markdown 
     throw new Error(`OpenRouter API processing error: ${error.message || "An unknown error occurred."}`);
   }
 }
+
+    
