@@ -6,33 +6,64 @@ import { FieldInputForm } from '@/components/subject-arbor/FieldInputForm';
 import { SubjectTreeDisplay } from '@/components/subject-arbor/SubjectTreeDisplay';
 import { SubjectArborLogo } from '@/components/subject-arbor/SubjectArborLogo';
 import type { TreeNodeData } from '@/types';
-import { generateSubjectTree } from '@/ai/flows/generate-subject-tree';
+import { generateSubjectTree, type GenerateSubjectTreeInput } from '@/ai/flows/generate-subject-tree';
 import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Settings, Check } from 'lucide-react';
+
+export type ApiProvider = 'openrouter' | 'cerebras';
 
 export default function SubjectArborPage() {
   const [fieldOfStudy, setFieldOfStudy] = React.useState<string | null>(null);
   const [treeData, setTreeData] = React.useState<TreeNodeData | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [apiProvider, setApiProvider] = React.useState<ApiProvider>('openrouter');
   const { toast } = useToast();
+
+  React.useEffect(() => {
+    const storedProvider = localStorage.getItem('apiProvider') as ApiProvider | null;
+    if (storedProvider && (storedProvider === 'openrouter' || storedProvider === 'cerebras')) {
+      setApiProvider(storedProvider);
+    }
+  }, []);
+
+  const handleApiProviderChange = (provider: string) => {
+    const newProvider = provider as ApiProvider;
+    setApiProvider(newProvider);
+    localStorage.setItem('apiProvider', newProvider);
+    toast({
+      title: "API Provider Updated",
+      description: `Switched to ${newProvider === 'openrouter' ? 'OpenRouter' : 'Cerebras (Direct)'} API.`,
+    });
+  };
 
   const handleFieldSubmit = async (submittedField: string) => {
     setIsLoading(true);
     setFieldOfStudy(submittedField);
-    setTreeData(null); // Clear previous tree
+    setTreeData(null);
     
     try {
       toast({
         title: "Processing Request",
-        description: `Generating subject tree for "${submittedField}"... This may take a moment.`,
+        description: `Generating subject tree for "${submittedField}" using ${apiProvider === 'openrouter' ? 'OpenRouter' : 'Cerebras (Direct)'}... This may take a moment.`,
       });
       
-      const resultFromAI = await generateSubjectTree({ fieldOfStudy: submittedField });
+      const input: GenerateSubjectTreeInput = { fieldOfStudy: submittedField };
+      const resultFromAI = await generateSubjectTree(input, apiProvider);
       
       if (resultFromAI.treeData) {
         try {
           const parsedData = JSON.parse(resultFromAI.treeData) as TreeNodeData;
           
-          // Validate the structure of the parsed data
           if (typeof parsedData.name !== 'string' || !Array.isArray(parsedData.children)) {
             console.error("Parsed data is missing 'name' or 'children' array at the root.", parsedData);
             throw new Error("The AI's response, while valid JSON, does not match the expected tree structure (missing root 'name' or 'children').");
@@ -48,9 +79,8 @@ export default function SubjectArborPage() {
           setTreeData(null);
           let description = "Received data from the AI is not a valid JSON tree structure. Please try again or a different query.";
           if (parseError.message.includes("does not match the expected tree structure")) {
-            description = parseError.message; // Use the specific error message from the check
+            description = parseError.message; 
           } else if (parseError instanceof SyntaxError && resultFromAI.treeData) {
-             // Provide a snippet of the invalid JSON if it's a SyntaxError
              description = `The AI's response was a string that could not be parsed as JSON. Received (partial): ${resultFromAI.treeData.substring(0,100)}... Error: ${parseError.message}`;
           } else {
             description = `Error parsing AI's JSON response: ${parseError.message}`;
@@ -62,38 +92,31 @@ export default function SubjectArborPage() {
           });
         }
       } else {
-        // This case should ideally not be hit if generateSubjectTree throws on failure or returns empty treeData
         throw new Error("No tree data string received from AI, though the call seemed to succeed.");
       }
     } catch (error: any) {
-      console.error("Error generating subject tree:", error);
+      console.error(`Error generating subject tree with ${apiProvider}:`, error);
       setTreeData(null);
       
-      // Attempt to provide more descriptive error messages
-      let descriptiveMessage = "An unexpected error occurred while generating the subject tree. Please try again.";
+      let descriptiveMessage = `An unexpected error occurred while generating the subject tree using ${apiProvider === 'openrouter' ? 'OpenRouter' : 'Cerebras (Direct)'}. Please try again.`;
 
       if (error && typeof error.message === 'string') {
         const msg = error.message;
-        // Specific OpenRouter error messages
-        if (msg.includes("OpenRouter API key is not configured")) {
-            descriptiveMessage = "OpenRouter API key is not configured. Please set OPENROUTER_API_KEY in your .env file.";
-        } else if (msg.includes("OpenRouter API request failed with status 401")) {
-            descriptiveMessage = "OpenRouter API authentication failed (401). Check your OPENROUTER_API_KEY.";
-        } else if (msg.includes("OpenRouter API request failed with status 429")) {
-            descriptiveMessage = "OpenRouter API rate limit exceeded (429). Please try again later or check your OpenRouter plan.";
-        } else if (msg.includes("OpenRouter API error: Problem with the JSON schema")) {
-            descriptiveMessage = "There was a problem with how the AI was asked to structure its response. Please try again. If the issue persists, contact support. Details: " + msg.split("Details: ")[1] || msg;
-        } else if (msg.includes("OpenRouter API error") && msg.includes("Provider returned error")) {
-            descriptiveMessage = "The AI model provider encountered an issue. This might be temporary. Please try again. Details: " + msg;
-        } else if (msg.includes("Failed to parse OpenRouter response") || msg.includes("did not yield a parsable JSON string")) {
-            // This indicates an issue in extracting or getting the JSON string itself
-            descriptiveMessage = "The AI's response could not be processed into a valid subject tree. Please try again. Details: " + msg.split("Details: ")[1] || msg;
+        if (msg.includes("API key is not configured")) {
+            descriptiveMessage = `${apiProvider === 'openrouter' ? 'OpenRouter' : 'Cerebras'} API key is not configured. Please check your .env file.`;
+        } else if (msg.includes("API request failed with status 401")) {
+            descriptiveMessage = `${apiProvider === 'openrouter' ? 'OpenRouter' : 'Cerebras'} API authentication failed (401). Check your API key.`;
+        } else if (msg.includes("API request failed with status 429")) {
+            descriptiveMessage = `${apiProvider === 'openrouter' ? 'OpenRouter' : 'Cerebras'} API rate limit exceeded (429). Please try again later or check your plan.`;
+        } else if (msg.includes("API error") && (msg.includes("Provider returned error") || msg.includes("Recursive schemas are currently not supported"))) {
+            descriptiveMessage = "The AI model provider encountered an issue. This might be temporary or a model/provider limitation. Details: " + msg;
+        } else if (msg.includes("Failed to parse") || msg.includes("did not yield a parsable JSON string")) {
+            descriptiveMessage = "The AI's response could not be processed into a valid subject tree. Details: " + msg;
         } else if (msg.includes("was not valid JSON") || msg.includes("does not match the expected tree structure")) {
-            // These errors come from JSON.parse or our structural validation
-            descriptiveMessage = "The AI's response was not a valid or correctly structured subject tree. Please try again. Details: " + msg.split("Details: ")[1] || msg;
-        } else if (msg.startsWith("OpenRouter API") || msg.startsWith("AI response")) { // General OpenRouter or AI errors
+            descriptiveMessage = "The AI's response was not a valid or correctly structured subject tree. Details: " + msg;
+        } else if (msg.startsWith("API") || msg.startsWith("AI response") || msg.startsWith("OpenRouter API error") || msg.startsWith("Cerebras API error")) { 
             descriptiveMessage = error.message;
-        } else if (msg.length > 0 && msg.length < 300) { // Show shorter, potentially custom error messages directly
+        } else if (msg.length > 0 && msg.length < 300) {
              descriptiveMessage = error.message;
         }
       }
@@ -111,11 +134,35 @@ export default function SubjectArborPage() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="py-6 px-4 md:px-8 border-b border-border">
-        <div className="container mx-auto flex items-center gap-3">
-          <SubjectArborLogo className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Subject Arbor
-          </h1>
+        <div className="container mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <SubjectArborLogo className="h-8 w-8 text-primary" />
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              Subject Arbor
+            </h1>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="rounded-full">
+                <Settings className="h-5 w-5" />
+                <span className="sr-only">Open API Provider Settings</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>AI Provider</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioGroup value={apiProvider} onValueChange={handleApiProviderChange}>
+                <DropdownMenuRadioItem value="openrouter">
+                  OpenRouter
+                  {apiProvider === 'openrouter' && <Check className="ml-auto h-4 w-4" />}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="cerebras">
+                  Cerebras (Direct)
+                  {apiProvider === 'cerebras' && <Check className="ml-auto h-4 w-4" />}
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
