@@ -26,8 +26,8 @@ export function SubjectTreeDisplay({
   fieldOfStudy,
   isLoading,
   onGenerateMoreChildren,
-  activeNodeGeneratingMore,
-  setActiveNodeGeneratingMore,
+  activeNodeGeneratingMore, // Make sure this is received from props
+  setActiveNodeGeneratingMore, // Make sure this is received from props
 }: SubjectTreeDisplayProps) {
   
   const handleExportJson = () => {
@@ -73,7 +73,7 @@ export function SubjectTreeDisplay({
 
   const commonHeightClass = "h-[calc(100vh-22rem)] md:h-[calc(100vh-16rem)]";
   // isProcessingAction is true if initial tree is loading, not when generating more for D3
-  const isInitialTreeLoading = isLoading && !activeNodeGeneratingMore && !!fieldOfStudy;
+  const isInitialTreeLoading = isLoading && !!fieldOfStudy;
 
   return (
     <Card className="h-full flex flex-col">
@@ -129,9 +129,9 @@ export function SubjectTreeDisplay({
                 treeData={treeData}
                 fieldOfStudy={fieldOfStudy || 'subject'}
                 onGenerateMoreChildren={onGenerateMoreChildren}
-                isProcessingAction={isInitialTreeLoading} // True only for initial tree generation
-                activeNodeGeneratingMore={activeNodeGeneratingMore}
-                setActiveNodeGeneratingMore={setActiveNodeGeneratingMore}
+                isProcessingAction={isInitialTreeLoading} 
+                activeNodeGeneratingMore={activeNodeGeneratingMore} // Pass this prop
+                setActiveNodeGeneratingMore={setActiveNodeGeneratingMore} // Pass this prop
               />
             </TabsContent>
           </Tabs>
@@ -140,4 +140,3 @@ export function SubjectTreeDisplay({
     </Card>
   );
 }
-
