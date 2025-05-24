@@ -239,7 +239,7 @@ export async function generateSubjectTree(
           { role: "user", content: `Generate the JSON subject tree with descriptions for "${input.fieldOfStudy}".` }
         ],
         temperature: 0.2, 
-        max_tokens: 4096, 
+        max_tokens: 16382, 
         top_p: 0.95,
       };
       
