@@ -95,7 +95,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
         tooltip.style('opacity', 1)
                .html(tooltipContent)
                .style('left', (mx + 15) + 'px')
-               .style('top', (my + 10) + 'px'); // Position below and to the right of cursor
+               .style('top', (my + 10) + 'px'); 
 
         d3.select(event.currentTarget).select('circle').classed('hovered', true);
          g.selectAll<SVGPathElement, d3.Link<unknown, D3HierarchyNode, D3HierarchyNode>>('path.link')
@@ -236,9 +236,12 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
   };
   
   const handleExportPng = useCallback(() => {
-    if (svgRef.current) {
+    if (svgRef.current && graphWrapperRef.current) {
+      const wrapperStyle = getComputedStyle(graphWrapperRef.current);
+      const backgroundColor = wrapperStyle.backgroundColor; // Gets computed color e.g., "rgb(230, 224, 255)"
+      
       toPng(svgRef.current, { 
-          backgroundColor: 'hsl(var(--background))', 
+          backgroundColor: backgroundColor, 
           pixelRatio: 2 
       })
         .then((dataUrl) => {
@@ -284,7 +287,15 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
         
         if (d3State.current.root) { 
             if (d3State.current.zoomBehavior && d3State.current.g) {
-                const initialTransform = d3.zoomIdentity.translate(margin.left, margin.top).scale(0.8);
+                 const initialZoomScale = 0.8;
+                 const initialXTranslate = margin.left;
+                 // Adjust initial Y translate to approximately center the graph vertically
+                 // This is a heuristic and might need refinement based on typical graph heights
+                 const rootNodeExists = d3State.current.root;
+                 const approxGraphHeight = rootNodeExists && rootNodeExists.height ? (rootNodeExists.height + 1) * 35 * initialZoomScale : height / 2; // 35 is nodeSize[0]
+                 const initialYTranslate = Math.max(margin.top, (height - approxGraphHeight) / 2);
+
+                const initialTransform = d3.zoomIdentity.translate(initialXTranslate, initialYTranslate).scale(initialZoomScale);
                 svg.call(d3State.current.zoomBehavior.transform, initialTransform);
             }
             updateChart(d3State.current.root);
@@ -313,8 +324,8 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
       return;
     }
     
-    const { margin } = d3State.current;
-    const initialX0 = d3State.current.dimensions.height / 2 || 200; 
+    const { margin, dimensions } = d3State.current;
+    const initialX0 = dimensions.height / 2 || 200; 
 
     const rootNode = d3.hierarchy(treeData, d => d.children) as D3HierarchyNode;
     rootNode.x0 = initialX0; 
@@ -322,6 +333,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
     d3State.current.root = rootNode;
     d3State.current.i = 0; 
 
+    // Collapse children of the root's children (level 2+ nodes)
     if (rootNode.children) {
       rootNode.children.forEach(child => {
         if (child.children) { 
@@ -332,7 +344,12 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
     setIsFullyExpanded(false); 
     
     if (d3State.current.svg && d3State.current.zoomBehavior && d3State.current.g) {
-        const initialTransform = d3.zoomIdentity.translate(margin.left, initialX0).scale(0.8);
+        const initialZoomScale = 0.8;
+        const initialXTranslate = margin.left;
+        const approxGraphHeight = rootNode.height ? (rootNode.height + 1) * 35 * initialZoomScale : dimensions.height / 2;
+        const initialYTranslate = Math.max(margin.top, (dimensions.height - approxGraphHeight) / 2);
+
+        const initialTransform = d3.zoomIdentity.translate(initialXTranslate, initialYTranslate).scale(initialZoomScale);
         d3State.current.svg.call(d3State.current.zoomBehavior.transform, initialTransform);
     }
 
