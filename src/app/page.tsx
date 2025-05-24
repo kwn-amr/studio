@@ -42,7 +42,7 @@ export default function SubjectArborPage() {
     localStorage.setItem('apiProvider', newProvider);
     toast({
       title: "API Provider Updated",
-      description: `Switched to ${newProvider === 'openrouter' ? 'OpenRouter' : 'Cerebras (Direct)'} API.`,
+      description: `Switched to ${newProvider === 'openrouter' ? 'OpenRouter (targeting Cerebras)' : 'Cerebras (Direct)'} API.`,
     });
   };
 
@@ -50,11 +50,20 @@ export default function SubjectArborPage() {
     setIsLoading(true);
     setFieldOfStudy(submittedField);
     setTreeData(null);
+    const startTime = performance.now();
     
     try {
+      let processingMessage = `Generating subject tree for "${submittedField}" using `;
+      if (apiProvider === 'openrouter') {
+        processingMessage += 'OpenRouter (targeting Cerebras provider)...';
+      } else {
+        processingMessage += 'Cerebras (Direct)...';
+      }
+      processingMessage += ' This may take a moment.';
+
       toast({
         title: "Processing Request",
-        description: `Generating subject tree for "${submittedField}" using ${apiProvider === 'openrouter' ? 'OpenRouter' : 'Cerebras (Direct)'}... This may take a moment.`,
+        description: processingMessage,
       });
       
       const input: GenerateSubjectTreeInput = { fieldOfStudy: submittedField };
@@ -69,21 +78,31 @@ export default function SubjectArborPage() {
             throw new Error("The AI's response, while valid JSON, does not match the expected tree structure (missing root 'name' or 'children').");
           }
           setTreeData(parsedData);
+          const endTime = performance.now();
+          const durationSeconds = ((endTime - startTime) / 1000).toFixed(2);
+          
+          let successDescription = `Subject tree for "${submittedField}" generated in ${durationSeconds}s using `;
+          if (apiProvider === 'openrouter') {
+            successDescription += 'OpenRouter (Cerebras provider).';
+          } else {
+            successDescription += 'Cerebras (Direct).';
+          }
+
           toast({
             title: "Success!",
-            description: `Subject tree for "${submittedField}" generated.`,
+            description: successDescription,
             variant: "default",
           });
         } catch (parseError: any) {
-          console.error("Failed to parse tree data string from AI:", parseError, "Received data string (partial):", resultFromAI.treeData.substring(0, 500));
+          console.error(`Failed to parse tree data string from AI (${apiProvider}):`, parseError, "Received data string (partial):", resultFromAI.treeData.substring(0, 500));
           setTreeData(null);
-          let description = "Received data from the AI is not a valid JSON tree structure. Please try again or a different query.";
+          let description = `Received data from the AI (${apiProvider}) is not a valid JSON tree structure. Please try again or a different query.`;
           if (parseError.message.includes("does not match the expected tree structure")) {
             description = parseError.message; 
           } else if (parseError instanceof SyntaxError && resultFromAI.treeData) {
-             description = `The AI's response was a string that could not be parsed as JSON. Received (partial): ${resultFromAI.treeData.substring(0,100)}... Error: ${parseError.message}`;
+             description = `The AI's response (${apiProvider}) was a string that could not be parsed as JSON. Received (partial): ${resultFromAI.treeData.substring(0,100)}... Error: ${parseError.message}`;
           } else {
-            description = `Error parsing AI's JSON response: ${parseError.message}`;
+            description = `Error parsing AI's JSON response (${apiProvider}): ${parseError.message}`;
           }
           toast({
             title: "Parsing Error",
@@ -92,13 +111,13 @@ export default function SubjectArborPage() {
           });
         }
       } else {
-        throw new Error("No tree data string received from AI, though the call seemed to succeed.");
+        throw new Error(`No tree data string received from AI (${apiProvider}), though the call seemed to succeed.`);
       }
     } catch (error: any) {
       console.error(`Error generating subject tree with ${apiProvider}:`, error);
       setTreeData(null);
       
-      let descriptiveMessage = `An unexpected error occurred while generating the subject tree using ${apiProvider === 'openrouter' ? 'OpenRouter' : 'Cerebras (Direct)'}. Please try again.`;
+      let descriptiveMessage = `An unexpected error occurred while generating the subject tree using ${apiProvider === 'openrouter' ? 'OpenRouter (Cerebras provider)' : 'Cerebras (Direct)'}. Please try again.`;
 
       if (error && typeof error.message === 'string') {
         const msg = error.message;
@@ -153,7 +172,7 @@ export default function SubjectArborPage() {
               <DropdownMenuSeparator />
               <DropdownMenuRadioGroup value={apiProvider} onValueChange={handleApiProviderChange}>
                 <DropdownMenuRadioItem value="openrouter">
-                  OpenRouter
+                  OpenRouter (Cerebras)
                   {apiProvider === 'openrouter' && <Check className="ml-auto h-4 w-4" />}
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="cerebras">
