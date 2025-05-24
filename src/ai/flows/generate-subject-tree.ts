@@ -223,7 +223,7 @@ export async function generateSubjectTree(
           useJsonSchemaFormat = true; 
           console.log(`OpenRouter Request: Model ${modelToUse}, Provider: Chutes, Using JSON Schema. Field: ${input.fieldOfStudy}`);
       } else if (openRouterSpecificProvider === 'Cerebras') {
-          modelToUse = "meta-llama/llama-3.3-70b-instruct";
+          modelToUse = "qwen/qwen3-32b"; // Changed model to qwen/qwen3-32b for Cerebras provider
           useJsonSchemaFormat = false; // Cerebras provider has issues with recursive schemas
           console.log(`OpenRouter Request: Model ${modelToUse}, Provider: Cerebras, NOT Using JSON Schema. Field: ${input.fieldOfStudy}`);
       } else {

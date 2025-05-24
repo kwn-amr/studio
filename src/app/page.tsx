@@ -25,7 +25,7 @@ export type SelectedApiOption = 'openrouter-chutes' | 'openrouter-cerebras' | 'c
 
 const API_OPTION_DETAILS: Record<SelectedApiOption, { name: string; providerForToast: string; modelForToast: string }> = {
   'openrouter-chutes': { name: "OpenRouter (Provider: Chutes, Model: Qwen3-30B)", providerForToast: "OpenRouter (Provider: Chutes)", modelForToast: "Qwen3-30B" },
-  'openrouter-cerebras': { name: "OpenRouter (Provider: Cerebras, Model: Llama3.3-70B)", providerForToast: "OpenRouter (Provider: Cerebras)", modelForToast: "Llama3.3-70B" },
+  'openrouter-cerebras': { name: "OpenRouter (Provider: Cerebras, Model: Qwen3-32B)", providerForToast: "OpenRouter (Provider: Cerebras)", modelForToast: "Qwen3-32B" },
   'cerebras-direct': { name: "Cerebras (Direct, Model: Qwen-32B)", providerForToast: "Cerebras (Direct)", modelForToast: "Qwen-32B" },
 };
 
@@ -142,7 +142,7 @@ export default function SubjectArborPage() {
             descriptiveMessage = `${currentApiDetails.providerForToast} API rate limit exceeded (429). Please try again later or check your plan.`;
         } else if (msg.includes("API error") && (msg.includes("Provider returned error") || msg.includes("Recursive schemas are currently not supported") || msg.includes("Problem with model provider configuration") || msg.includes("Problem with the JSON schema") || msg.includes("No allowed providers are available"))) {
             descriptiveMessage = `The AI model provider encountered an issue processing the request with ${currentApiDetails.providerForToast} (Model: ${currentApiDetails.modelForToast}). Details: ${msg}`;
-        } else if (msg.includes("Failed to parse") || msg.includes("did not yield a parsable JSON string")) {
+        } else if (msg.includes("Failed to parse") || msg.includes("did not yield a parsable JSON string") || msg.includes("could not be processed into a parsable JSON string")) {
             descriptiveMessage = `The AI's response via ${currentApiDetails.providerForToast} (Model: ${currentApiDetails.modelForToast}) could not be processed into a valid subject tree. Details: ${msg}`;
         } else if (msg.includes("was not valid JSON") || msg.includes("does not match the expected tree structure")) {
             descriptiveMessage = `The AI's response via ${currentApiDetails.providerForToast} (Model: ${currentApiDetails.modelForToast}) was not a valid or correctly structured subject tree. Details: ${msg}`;
