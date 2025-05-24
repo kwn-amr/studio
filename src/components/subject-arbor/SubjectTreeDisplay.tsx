@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import type { TreeNodeData } from '@/types';
+// D3HierarchyNode import removed as it's not directly used here after refactor
 import { TreeNode } from './TreeNode';
 import { D3SubjectGraph } from './D3SubjectGraph';
 import { Button } from '@/components/ui/button';
@@ -14,11 +15,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 interface SubjectTreeDisplayProps {
   treeData: TreeNodeData | null;
   fieldOfStudy: string | null;
-  isLoading: boolean; // Combined loading state (initial gen OR more children gen)
+  isLoading: boolean; // Combined loading state (initial gen OR "generate more" on D3)
   onGenerateMoreChildren: (targetNodePath: string[], fieldOfStudy: string) => Promise<void>;
+  activeNodeGeneratingMore: string | null; // Prop for D3 graph
+  setActiveNodeGeneratingMore: (id: string | null) => void; // Prop for D3 graph
 }
 
-export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenerateMoreChildren }: SubjectTreeDisplayProps) {
+export function SubjectTreeDisplay({
+  treeData,
+  fieldOfStudy,
+  isLoading,
+  onGenerateMoreChildren,
+  activeNodeGeneratingMore,
+  setActiveNodeGeneratingMore,
+}: SubjectTreeDisplayProps) {
   
   const handleExportJson = () => {
     if (!treeData) return;
@@ -62,6 +72,8 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
 
 
   const commonHeightClass = "h-[calc(100vh-22rem)] md:h-[calc(100vh-16rem)]";
+  // isProcessingAction is true if initial tree is loading, not when generating more for D3
+  const isInitialTreeLoading = isLoading && !activeNodeGeneratingMore && !!fieldOfStudy;
 
   return (
     <Card className="h-full flex flex-col">
@@ -83,7 +95,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
         )}
       </CardHeader>
       <CardContent className="flex-grow p-0 flex flex-col relative">
-        {isLoading && !treeData && ( // Show full-card loader only if initial tree is loading
+        {isInitialTreeLoading && ( // Show full-card loader only if initial tree is loading (and not "generate more")
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-20">
                 <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
                 <p className="text-muted-foreground text-center">
@@ -91,7 +103,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
                 </p>
             </div>
         )}
-        {!isLoading && !treeData && (
+        {!isLoading && !treeData && ( // Shown when no data and not loading
           <div className="flex flex-col items-center justify-center h-full text-center p-6">
             <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-network mb-4 text-muted-foreground opacity-50" data-ai-hint="tree diagram"><path d="M16 5C16 3.34315 14.6569 2 13 2C11.3431 2 10 3.34315 10 5C10 6.65685 11.3431 8 13 8C14.6569 8 16 6.65685 16 5Z"/><path d="M12 12.5L12 8"/><path d="M5 19C5 17.3431 6.34315 16 8 16C9.65685 16 11 17.3431 11 19C11 20.6569 9.65685 22 8 22C6.34315 22 5 20.6569 5 19Z"/><path d="M13 19C13 17.3431 14.3431 16 16 16C17.6569 16 19 17.3431 19 19C19 20.6569 17.6569 22 16 22C14.3431 22 13 20.6569 13 19Z"/><path d="M12 12.5L8 16"/><path d="M12 12.5L16 16"/></svg>
             <p className="text-muted-foreground">
@@ -112,12 +124,14 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
                 </ul>
               </ScrollArea>
             </TabsContent>
-            <TabsContent value="graph" className={`flex-grow ${commonHeightClass}`}>
+            <TabsContent value="graph" className={`flex-grow ${commonHeightClass} overflow-visible`}> {/* Removed overflow-hidden */}
               <D3SubjectGraph
                 treeData={treeData}
                 fieldOfStudy={fieldOfStudy || 'subject'}
-                onGenerateMoreChildren={onGenerateMoreChildren} // Pass the prop directly
-                isProcessingAction={isLoading && !!fieldOfStudy} // Pass overall loading state for initial generation
+                onGenerateMoreChildren={onGenerateMoreChildren}
+                isProcessingAction={isInitialTreeLoading} // True only for initial tree generation
+                activeNodeGeneratingMore={activeNodeGeneratingMore}
+                setActiveNodeGeneratingMore={setActiveNodeGeneratingMore}
               />
             </TabsContent>
           </Tabs>
@@ -126,3 +140,4 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
     </Card>
   );
 }
+
