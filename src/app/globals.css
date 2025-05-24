@@ -129,7 +129,7 @@ body {
   stroke: hsl(var(--primary));
   stroke-width: 1.5px;
   cursor: pointer;
-  transition: fill 0.2s ease, stroke 0.2s ease, r 0.2s ease;
+  transition: fill 0.2s ease, stroke 0.2s ease, r 0.2s ease, opacity 0.2s ease;
 }
 
 .node circle.node-main-circle.collapsed {
@@ -152,28 +152,18 @@ body {
   r: calc(var(--node-radius) + 2px); 
 }
 
-.node .generate-more-group {
-  opacity: 0;
-  transition: opacity 0.2s ease-in-out;
-  pointer-events: none; /* Initially hidden and non-interactive */
+.node circle.node-main-circle.node-loading {
+  opacity: 0.3;
 }
 
-.node .generate-more-group.generate-more-visible {
-  opacity: 1;
-  pointer-events: auto; /* Make it clickable when visible */
+.node .node-loader-group .node-loader-backdrop {
+  fill: hsl(var(--background) / 0.5); /* Semi-transparent backdrop for loader */
+  stroke: none;
 }
-
-.node .generate-more-group .plus-icon-group path { /* Style for the PlusCircle path */
-  stroke: hsl(var(--primary));
-  fill: hsl(var(--background));
-  transition: fill 0.2s ease, stroke 0.2s ease;
-}
-.node .generate-more-group:hover .plus-icon-group path {
-  stroke: hsl(var(--ring));
-  fill: hsl(var(--accent));
-}
-.node .generate-more-group .loader-icon-group path { /* Style for the loader icon path */
-    fill: hsl(var(--primary)); 
+.node .node-loader-group .node-loader-spinner {
+  fill: hsl(var(--primary));
+  stroke: hsl(var(--background));
+  stroke-width: 1px;
 }
 
 
@@ -188,6 +178,7 @@ body {
   stroke-linejoin: miter;
   pointer-events: none; 
   dominant-baseline: middle; 
+  transition: fill-opacity 0.2s ease;
 }
 
 .link {
@@ -222,4 +213,3 @@ body {
     transform: rotate(360deg);
   }
 }
-

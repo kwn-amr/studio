@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import type { TreeNodeData } from '@/types';
 import { Button } from '@/components/ui/button';
-import { ImageIcon, Minimize, Maximize, PlusCircle, Loader2 } from 'lucide-react';
+import { ImageIcon, Minimize, Maximize, Loader2 } from 'lucide-react'; // Removed PlusCircle
 import { toPng } from 'html-to-image';
 
 export interface D3HierarchyNode extends d3.HierarchyPointNode<TreeNodeData> {
@@ -30,8 +30,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
   const graphWrapperRef = useRef<HTMLDivElement>(null);
 
   const [isFullyExpanded, setIsFullyExpanded] = useState(false);
-  const [activeNodeGeneratingMore, setActiveNodeGeneratingMore] = useState<string | null>(null); // ID of node currently fetching more children
-  const [selectedNodeForMoreButton, setSelectedNodeForMoreButton] = useState<string | null>(null); // ID of node whose "generate more" button should be visible
+  const [activeNodeGeneratingMore, setActiveNodeGeneratingMore] = useState<string | null>(null);
 
   const d3State = useRef<{
     svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null;
@@ -55,7 +54,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
 
   const animationDuration = 750;
   const nodeRadius = 6;
-  const generateMoreButtonRadius = 8;
+  const loaderIconRadius = 8; // For loader icon positioning
 
   const getContainerDimensions = useCallback(() => {
     if (graphWrapperRef.current) {
@@ -91,54 +90,75 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
     const nodeEnter = node.enter().append('g')
       .attr('class', 'node')
       .attr('transform', `translate(${effectiveSource.y0 || 0},${effectiveSource.x0 || 0})`)
-      .on('click', (event, dNode) => {
-        const targetElement = event.target as SVGElement;
-        // If the click was on the 'generate more' button itself or its hitbox,
-        // let its specific click handler (defined on generateMoreGroup) manage it.
-        if (targetElement.closest('.generate-more-group')) {
-            return;
-        }
-
-        // Click on the main node circle or text
-        // Toggle expand/collapse
-        if (dNode.children) { // If expanded, collapse it
+      .on('click', async (event, dNode) => {
+        // Toggle expansion/collapse
+        if (dNode.children) {
             dNode._children = dNode.children;
             dNode.children = undefined;
-        } else if (dNode._children) { // If collapsed with children, expand it
+        } else if (dNode._children) {
             dNode.children = dNode._children;
             dNode._children = undefined;
         }
-        // If it's a leaf (no children and no _children), nothing to expand/collapse.
+        // Update chart immediately for expand/collapse visual feedback
+        updateChart(dNode);
 
-        // Toggle visibility of "generate more" button for this node
-        setSelectedNodeForMoreButton(prevId => (prevId === dNode.id && !dNode.isGeneratingMore ? null : dNode.id!));
-        updateChart(dNode); // Update the chart, animating from the clicked node
+        // If already generating for this node or a global action is processing, do nothing more.
+        if (activeNodeGeneratingMore === dNode.id || isProcessingAction || dNode.isGeneratingMore) {
+            return;
+        }
+
+        // Set loading state for this node
+        dNode.isGeneratingMore = true;
+        setActiveNodeGeneratingMore(dNode.id!);
+        updateChart(dNode); // Update chart again to show loader
+
+        try {
+          const path: string[] = [];
+          let current: D3HierarchyNode | null = dNode;
+          while (current) {
+            path.unshift(current.data.name);
+            current = current.parent;
+          }
+          await onGenerateMoreChildren(path, fieldOfStudy);
+          // State reset (isGeneratingMore, activeNodeGeneratingMore) is handled by page.tsx
+          // updating treeData, which triggers useEffect in this component.
+        } catch (err) {
+          console.error("Error generating more children from D3 graph click:", err);
+          // If an error occurs during generation, reset the loading state for this node
+          if (dNode.isGeneratingMore) {
+              dNode.isGeneratingMore = false;
+          }
+          if (activeNodeGeneratingMore === dNode.id) {
+              setActiveNodeGeneratingMore(null);
+          }
+          updateChart(dNode); // Re-render to hide loader
+        }
       })
       .on('mouseover', function(event, dNode) {
+        if (dNode.isGeneratingMore) return; // Don't show tooltip if loading
+
         const [mx, my] = d3.pointer(event, currentGraphWrapper);
         let tooltipContent = `<strong>${dNode.data.name}</strong>`;
         if (dNode.data.description && dNode.data.description.trim() !== '') {
            tooltipContent += `<br><small style="display: block; margin-top: 4px; color: hsl(var(--muted-foreground));">${dNode.data.description.trim()}</small>`;
         }
         
-        const tooltipNode = tooltip.node() as HTMLDivElement;
+        const tooltipNodeEl = tooltip.node() as HTMLDivElement;
         tooltip.html(tooltipContent)
                .style('opacity', 1);
 
-        const tooltipWidth = tooltipNode.offsetWidth;
-        const tooltipHeight = tooltipNode.offsetHeight;
+        const tooltipWidth = tooltipNodeEl.offsetWidth;
+        const tooltipHeight = tooltipNodeEl.offsetHeight;
         const wrapperWidth = currentGraphWrapper.clientWidth;
-        // const wrapperHeight = currentGraphWrapper.clientHeight; // Not currently used for y-axis adjustment
 
         let left = mx + 15;
         let top = my + 10;
 
-        if (left + tooltipWidth > wrapperWidth - 10) { // 10px buffer from edge
+        if (left + tooltipWidth > wrapperWidth - 10) {
             left = mx - tooltipWidth - 15; 
         }
-        if (left < 5) left = 5; // 5px buffer from left edge
+        if (left < 5) left = 5;
 
-        // Basic vertical adjustment if tooltip goes off bottom, needs improvement for top overflow
         if (top + tooltipHeight > currentGraphWrapper.clientHeight - 10) {
             top = my - tooltipHeight - 10; 
         }
@@ -167,57 +187,22 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
       .attr('text-anchor', d => (d.children || d._children) ? 'end' : 'start')
       .text(d => d.data.name);
 
-    const generateMoreGroup = nodeEnter.append('g')
-      .attr('class', 'generate-more-group')
-      .style('cursor', 'pointer')
-      .attr('transform', `translate(${nodeRadius + generateMoreButtonRadius + 3}, 0)`)
-      .on('click', async (event, dNode) => {
-        event.stopPropagation(); // Prevent node's main click handler
-        if (activeNodeGeneratingMore === dNode.id || isProcessingAction || dNode.isGeneratingMore) return;
-        
-        dNode.isGeneratingMore = true; // Set generating flag on the D3 node data
-        setActiveNodeGeneratingMore(dNode.id!);
-        updateChart(dNode); // Re-render to show loader
-
-        try {
-          const path: string[] = [];
-          let current: D3HierarchyNode | null = dNode;
-          while (current) {
-            path.unshift(current.data.name);
-            current = current.parent;
-          }
-          await onGenerateMoreChildren(path, fieldOfStudy);
-        } catch (err) {
-          console.error("Error generating more children from D3 graph:", err);
-           // If error, ensure loader is hidden
-           const nodeToReset = d3State.current.root?.descendants().find(n => n.id === dNode.id);
-           if (nodeToReset) nodeToReset.isGeneratingMore = false;
-           setActiveNodeGeneratingMore(null); // Reset active node
-           updateChart(nodeToReset || d3State.current.root); // Re-render to clear loader
-        } finally {
-            // Flag is cleared by useEffect reacting to activeNodeGeneratingMore and isProcessingAction
-            // and treeData prop update
-        }
-      });
-
-    generateMoreGroup.append('circle')
-      .attr('class', 'generate-more-button-hitbox') // For easier clicking
-      .attr('r', generateMoreButtonRadius + 2) // Slightly larger hitbox
-      .style('fill', 'transparent');
-
-    generateMoreGroup.append('g')
-      .attr('class', 'plus-icon-group')
-      .append('path')
-      .attr('d', PlusCircle.path)
-      .attr('transform', `translate(${-generateMoreButtonRadius}, ${-generateMoreButtonRadius}) scale(0.7)`);
-
-    generateMoreGroup.append('g')
-      .attr('class', 'loader-icon-group')
+    // Add loader icon group directly to the node
+    const loaderIconGroup = nodeEnter.append('g')
+      .attr('class', 'node-loader-group')
       .style('display', 'none') // Initially hidden
-      .append('path')
+      .attr('transform', `translate(0,0)`) // Centered on node origin
+      .style('pointer-events', 'none');
+
+    loaderIconGroup.append('circle') // Optional: background for loader
+      .attr('r', loaderIconRadius)
+      .attr('class', 'node-loader-backdrop');
+
+    loaderIconGroup.append('path')
       .attr('d', Loader2.path)
-      .attr('class', 'animate-spin') // Ensure animate-spin is defined in CSS
-      .attr('transform', `translate(${-generateMoreButtonRadius}, ${-generateMoreButtonRadius}) scale(0.7)`);
+      .attr('class', 'node-loader-spinner animate-spin')
+      .attr('transform', `translate(${-loaderIconRadius / 2}, ${-loaderIconRadius / 2}) scale(0.8)`); // Adjust scale & position
+
 
     const nodeUpdate = nodeEnter.merge(node);
 
@@ -231,21 +216,16 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
         let classes = 'node-main-circle ';
         classes += (d.children || d._children) ? 'node-interactive' : 'node-leaf';
         if (d._children) classes += ' collapsed'; else if (d.children) classes += ' expanded';
+        if (d.isGeneratingMore) classes += ' node-loading'; // Class for loading state
         return classes;
       });
     
-    // Update visibility of plus/loader icons and the group itself
-    nodeUpdate.select<SVGGElement>('.generate-more-group')
-      .classed('generate-more-visible', d => d.id === selectedNodeForMoreButton && !d.isGeneratingMore)
-      .select('.plus-icon-group')
-      .style('display', d => d.isGeneratingMore ? 'none' : 'block');
-
-    nodeUpdate.select<SVGGElement>('.generate-more-group')
-      .select('.loader-icon-group')
+    nodeUpdate.select<SVGGElement>('.node-loader-group')
       .style('display', d => d.isGeneratingMore ? 'block' : 'none');
-
+    
     nodeUpdate.select('text')
-      .style('fill-opacity', 1);
+      .style('fill-opacity', d => d.isGeneratingMore ? 0.3 : 1);
+
 
     const nodeExit = node.exit().transition()
       .duration(animationDuration)
@@ -286,7 +266,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
       d.y0 = d.y;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [animationDuration, nodeRadius, onGenerateMoreChildren, fieldOfStudy, activeNodeGeneratingMore, isProcessingAction, selectedNodeForMoreButton]);
+  }, [animationDuration, nodeRadius, onGenerateMoreChildren, fieldOfStudy, activeNodeGeneratingMore, isProcessingAction]);
 
 
   const collapseAll = useCallback((d: D3HierarchyNode, keepRootChildren = false) => {
@@ -312,19 +292,18 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
   }, []);
 
   const handleToggleExpandAll = () => {
-    if (!d3State.current.root) return;
+    if (!d3State.current.root || activeNodeGeneratingMore) return;
     if (isFullyExpanded) {
       collapseAll(d3State.current.root, true);
     } else {
       expandAll(d3State.current.root);
     }
     setIsFullyExpanded(!isFullyExpanded);
-    setSelectedNodeForMoreButton(null); // Hide "generate more" button
     updateChart(d3State.current.root);
   };
 
   const handleExportPng = useCallback(() => {
-    if (svgRef.current && graphWrapperRef.current) {
+    if (svgRef.current && graphWrapperRef.current && !activeNodeGeneratingMore) {
       const wrapperStyle = getComputedStyle(graphWrapperRef.current);
       const backgroundColor = wrapperStyle.backgroundColor;
       
@@ -342,7 +321,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
           console.error('Failed to export PNG:', err);
         });
     }
-  }, [fieldOfStudy]);
+  }, [fieldOfStudy, activeNodeGeneratingMore]);
 
   useEffect(() => {
     const initOrResize = () => {
@@ -369,7 +348,10 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
             d3State.current.g = svg.append('g')
                 .attr('transform', `translate(${margin.left},${margin.top})`);
 
+            // Initialize treeLayout with nodeSize for consistent spacing
             d3State.current.treeLayout = d3.tree<TreeNodeData>().nodeSize([35, 220]);
+        } else {
+             // If resizing, treeLayout already exists, just update if needed (nodeSize usually doesn't need update on resize)
         }
 
         if (d3State.current.root) {
@@ -390,7 +372,8 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
       }
       resizeObserver.disconnect();
     };
-  }, [getContainerDimensions, updateChart]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getContainerDimensions]); // updateChart removed to prevent potential loops, managed by other effects
 
   useEffect(() => {
     if (!d3State.current.g || !d3State.current.treeLayout || d3State.current.dimensions.width === 0) {
@@ -415,20 +398,18 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
     newRootNode.x0 = oldRoot?.x0 || initialX0;
     newRootNode.y0 = oldRoot?.y0 || 0;
     
-    // Preserve collapsed/expanded state when treeData changes
     const preserveState = (oldNode: D3HierarchyNode | undefined, newNode: D3HierarchyNode) => {
         if (oldNode) {
-            if (oldNode._children && !oldNode.children) { // Was collapsed
+            if (oldNode._children && !oldNode.children) {
                 if (newNode.children && newNode.children.length > 0) { 
                     newNode._children = newNode.children;
                     newNode.children = undefined;
-                } else { // No new children, or old node was leaf-like but marked collapsed
+                } else { 
                     newNode._children = undefined;
                 }
             }
-            // Preserve isGeneratingMore if the IDs match
-            if(oldNode.id && newNode.id && oldNode.id === newNode.id) {
-              newNode.isGeneratingMore = oldNode.isGeneratingMore;
+            if (oldNode.id && newNode.id && oldNode.id === newNode.id) {
+              newNode.isGeneratingMore = activeNodeGeneratingMore === newNode.id; // Ensure this syncs up
             }
         }
         if (newNode.children) {
@@ -447,7 +428,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
     let sourceForAnimation: D3HierarchyNode = newRootNode; 
 
     if (isInitialLoad) {
-      d3State.current.i = 0; // Reset node ID counter for new tree
+      d3State.current.i = 0; 
       if (newRootNode.children) {
         newRootNode.children.forEach(child => {
           if (child.children) {
@@ -456,7 +437,6 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
         });
       }
       setIsFullyExpanded(false);
-      setSelectedNodeForMoreButton(null); // Reset button on new tree
 
       if (d3State.current.svg && d3State.current.zoomBehavior && d3State.current.g) {
           const initialZoomScale = 0.6; 
@@ -464,7 +444,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
           
           let maxDepth = 0;
           newRootNode.each(d => { if (d.depth > maxDepth) maxDepth = d.depth; });
-          const approxGraphHeight = newRootNode.height ? (newRootNode.height + 1) * 35 * initialZoomScale : dimensions.height / 2;
+          const approxGraphHeight = newRootNode.height ? (newRootNode.height + 1) * 35 * initialZoomScale : dimensions.height / 2; // 35 is vertical nodeSize
           let yTranslate = Math.max(margin.top, (dimensions.height - approxGraphHeight) / 2);
           if (newRootNode.descendants().length * 35 * initialZoomScale > dimensions.height) { 
              yTranslate = margin.top + 20; 
@@ -473,8 +453,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
           d3State.current.svg.call(d3State.current.zoomBehavior.transform, initialTransform);
       }
     } else { 
-      // This is an update (e.g., adding more children)
-      if (activeNodeGeneratingMore) { // If a node was actively fetching more children
+      if (activeNodeGeneratingMore) {
         const findNodeByIdRecursive = (node: D3HierarchyNode, id: string): D3HierarchyNode | null => {
           if (node.id === id) return node;
           if (node.children) {
@@ -494,10 +473,11 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
         
         const modifiedNode = findNodeByIdRecursive(newRootNode, activeNodeGeneratingMore);
         if (modifiedNode) {
-          if (modifiedNode._children) { // Ensure node is expanded to show new children
+          if (modifiedNode._children) {
             modifiedNode.children = modifiedNode._children;
             modifiedNode._children = undefined;
           }
+          modifiedNode.isGeneratingMore = false; // This should be reset once new children are processed
           sourceForAnimation = modifiedNode; 
         }
       }
@@ -506,10 +486,9 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
     updateChart(sourceForAnimation);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [treeData, collapseAll]); // activeNodeGeneratingMore removed from here to avoid loop, handled in its own effect
+  }, [treeData, collapseAll]); 
 
 
-  // Effect to update node's generating state based on activeNodeGeneratingMore
   useEffect(() => {
     if (!d3State.current.root) return;
     let nodeChanged = false;
@@ -527,16 +506,8 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
     if (nodeChanged) {
         updateChart(foundActiveNodeForAnimation || d3State.current.root);
     }
-  }, [activeNodeGeneratingMore, updateChart]);
-
-  // Effect to update chart if selectedNodeForMoreButton changes (to show/hide button immediately)
-  useEffect(() => {
-    if (d3State.current.root) {
-      const selectedNode = d3State.current.root.descendants().find(n => n.id === selectedNodeForMoreButton);
-      updateChart(selectedNode || d3State.current.root);
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNodeForMoreButton]);
+  }, [activeNodeGeneratingMore]);
 
 
   return (
@@ -575,3 +546,4 @@ export function D3SubjectGraph({ treeData, fieldOfStudy, onGenerateMoreChildren,
     </div>
   );
 }
+
