@@ -9,38 +9,48 @@ import type { TreeNodeData } from '@/types';
 import { generateSubjectTree, type GenerateSubjectTreeInput, type GenerateSubjectTreeOutput } from '@/ai/flows/generate-subject-tree';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Settings } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Settings, Check } from 'lucide-react';
 
-type ApiOptionValue = "openrouter-chutes" | "openrouter-cerebras" | "cerebras-direct";
+export type ApiProvider = 'openrouter' | 'cerebras';
+export type SelectedApiOption = 'openrouter-chutes' | 'openrouter-cerebras' | 'cerebras-direct';
 
-const API_OPTIONS: Array<{ value: ApiOptionValue; label: string; model: string; defaultProvider?: string }> = [
-  { value: "openrouter-chutes", label: "OpenRouter (Provider: Chutes)", model: "Qwen3-30B", defaultProvider: "Chutes" },
-  { value: "openrouter-cerebras", label: "OpenRouter (Provider: Cerebras)", model: "Llama3.3-70B", defaultProvider: "Cerebras" },
-  { value: "cerebras-direct", label: "Cerebras (Direct)", model: "Qwen-32B" },
-];
+const API_OPTION_DETAILS: Record<SelectedApiOption, { name: string; providerForToast: string; modelForToast: string }> = {
+  'openrouter-chutes': { name: "OpenRouter (Provider: Chutes, Model: Qwen3-30B)", providerForToast: "OpenRouter (Provider: Chutes)", modelForToast: "Qwen3-30B" },
+  'openrouter-cerebras': { name: "OpenRouter (Provider: Cerebras, Model: Llama3.3-70B)", providerForToast: "OpenRouter (Provider: Cerebras)", modelForToast: "Llama3.3-70B" },
+  'cerebras-direct': { name: "Cerebras (Direct, Model: Qwen-32B)", providerForToast: "Cerebras (Direct)", modelForToast: "Qwen-32B" },
+};
+
 
 export default function SubjectArborPage() {
   const [fieldOfStudy, setFieldOfStudy] = React.useState<string | null>(null);
   const [treeData, setTreeData] = React.useState<TreeNodeData | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [selectedApiOption, setSelectedApiOption] = React.useState<SelectedApiOption>('openrouter-chutes');
   const { toast } = useToast();
-  const [selectedApiOption, setSelectedApiOption] = React.useState<ApiOptionValue>(API_OPTIONS[0].value);
 
   React.useEffect(() => {
-    const storedApiOption = localStorage.getItem('subjectArborApiOption') as ApiOptionValue | null;
-    if (storedApiOption && API_OPTIONS.some(opt => opt.value === storedApiOption)) {
-      setSelectedApiOption(storedApiOption);
+    const storedOption = localStorage.getItem('selectedApiOption') as SelectedApiOption | null;
+    if (storedOption && API_OPTION_DETAILS[storedOption]) {
+      setSelectedApiOption(storedOption);
     }
   }, []);
 
-  const handleApiOptionChange = (value: string) => {
-    const newOption = value as ApiOptionValue;
+  const handleApiOptionChange = (option: string) => {
+    const newOption = option as SelectedApiOption;
     setSelectedApiOption(newOption);
-    localStorage.setItem('subjectArborApiOption', newOption);
+    localStorage.setItem('selectedApiOption', newOption);
     toast({
-      title: "API Provider Changed",
-      description: `Switched to ${API_OPTIONS.find(opt => opt.value === newOption)?.label || 'selected provider'}.`,
+      title: "AI Backend Updated",
+      description: `Switched to ${API_OPTION_DETAILS[newOption].name}.`,
     });
   };
 
@@ -49,37 +59,29 @@ export default function SubjectArborPage() {
     setFieldOfStudy(submittedField);
     setTreeData(null);
     const startTime = performance.now();
-
-    const currentOptionDetails = API_OPTIONS.find(opt => opt.value === selectedApiOption) || API_OPTIONS[0];
-    let apiProvider: 'openrouter' | 'cerebras' = 'openrouter';
-    let openRouterSpecificProvider: string | undefined = undefined;
-    let toastProviderName = currentOptionDetails.label;
-
-    if (selectedApiOption === 'cerebras-direct') {
-      apiProvider = 'cerebras';
-      toastProviderName = `Cerebras (Direct - ${currentOptionDetails.model})`;
-    } else if (selectedApiOption === 'openrouter-chutes') {
-      apiProvider = 'openrouter';
-      openRouterSpecificProvider = 'Chutes';
-      toastProviderName = `OpenRouter (Provider: Chutes, Model: ${currentOptionDetails.model})`;
-    } else if (selectedApiOption === 'openrouter-cerebras') {
-      apiProvider = 'openrouter';
-      openRouterSpecificProvider = 'Cerebras';
-      toastProviderName = `OpenRouter (Provider: Cerebras, Model: ${currentOptionDetails.model})`;
-    }
     
+    let apiProviderArg: ApiProvider;
+    let openRouterSubProviderArg: string | undefined = undefined;
+    const currentApiDetails = API_OPTION_DETAILS[selectedApiOption];
+
+    if (selectedApiOption === 'openrouter-chutes') {
+      apiProviderArg = 'openrouter';
+      openRouterSubProviderArg = 'Chutes';
+    } else if (selectedApiOption === 'openrouter-cerebras') {
+      apiProviderArg = 'openrouter';
+      openRouterSubProviderArg = 'Cerebras';
+    } else { // cerebras-direct
+      apiProviderArg = 'cerebras';
+    }
+
     toast({
       title: "Processing Request",
-      description: `Generating subject tree for "${submittedField}" using ${toastProviderName}. This may take a moment.`,
+      description: `Generating subject tree for "${submittedField}" using ${currentApiDetails.providerForToast} (Model: ${currentApiDetails.modelForToast}). This may take a moment.`,
     });
       
     try {
-      const input: GenerateSubjectTreeInput = { 
-        fieldOfStudy: submittedField,
-        apiProvider: apiProvider,
-        openRouterSpecificProvider: openRouterSpecificProvider
-      };
-      const resultFromAI: GenerateSubjectTreeOutput = await generateSubjectTree(input);
+      const input: GenerateSubjectTreeInput = { fieldOfStudy: submittedField };
+      const resultFromAI: GenerateSubjectTreeOutput = await generateSubjectTree(input, apiProviderArg, openRouterSubProviderArg);
       
       if (resultFromAI.treeData) {
         try {
@@ -93,9 +95,10 @@ export default function SubjectArborPage() {
           const endTime = performance.now();
           const durationSeconds = ((endTime - startTime) / 1000).toFixed(2);
           
-          let successDescription = `Subject tree for "${submittedField}" generated in ${durationSeconds}s using ${toastProviderName}.`;
+          let successDescription = `Subject tree for "${submittedField}" generated in ${durationSeconds}s using ${currentApiDetails.providerForToast} (Model: ${currentApiDetails.modelForToast}).`;
+
           if (resultFromAI.usage) {
-            successDescription += ` (Tokens: P:${resultFromAI.usage.prompt_tokens}/C:${resultFromAI.usage.completion_tokens}/T:${resultFromAI.usage.total_tokens})`;
+            successDescription += ` (Tokens: P${resultFromAI.usage.prompt_tokens}/C${resultFromAI.usage.completion_tokens}/T${resultFromAI.usage.total_tokens})`;
           }
 
           toast({
@@ -104,15 +107,15 @@ export default function SubjectArborPage() {
             variant: "default",
           });
         } catch (parseError: any) {
-          console.error("Failed to parse tree data string from AI:", parseError, "Received data string (partial):", resultFromAI.treeData.substring(0, 500));
+          console.error(`Failed to parse tree data string from AI (${currentApiDetails.providerForToast}):`, parseError, "Received data string (partial):", resultFromAI.treeData.substring(0, 500));
           setTreeData(null);
-          let description = "Received data from the AI is not a valid JSON tree structure. Please try again or a different query.";
+          let description = `Received data from the AI (${currentApiDetails.providerForToast}) is not a valid JSON tree structure. Please try again or a different query.`;
           if (parseError.message.includes("does not match the expected tree structure")) {
             description = parseError.message; 
           } else if (parseError instanceof SyntaxError && resultFromAI.treeData) {
-             description = `The AI's response was a string that could not be parsed as JSON. Received (partial): ${resultFromAI.treeData.substring(0,100)}... Error: ${parseError.message}`;
+             description = `The AI's response (${currentApiDetails.providerForToast}) was a string that could not be parsed as JSON. Received (partial): ${resultFromAI.treeData.substring(0,100)}... Error: ${parseError.message}`;
           } else {
-            description = `Error parsing AI's JSON response: ${parseError.message}`;
+            description = `Error parsing AI's JSON response (${currentApiDetails.providerForToast}): ${parseError.message}`;
           }
           toast({
             title: "Parsing Error",
@@ -121,31 +124,31 @@ export default function SubjectArborPage() {
           });
         }
       } else {
-        throw new Error("No tree data string received from AI, though the call seemed to succeed.");
+        throw new Error(`No tree data string received from AI (${currentApiDetails.providerForToast}), though the call seemed to succeed.`);
       }
     } catch (error: any) {
-      console.error(`Error generating subject tree with ${toastProviderName}:`, error);
+      console.error(`Error generating subject tree with ${currentApiDetails.providerForToast} (Model: ${currentApiDetails.modelForToast}):`, error);
       setTreeData(null);
       
-      let descriptiveMessage = `An unexpected error occurred while generating the subject tree using ${toastProviderName}. Please try again.`;
+      let descriptiveMessage = `An unexpected error occurred while generating the subject tree using ${currentApiDetails.providerForToast} (Model: ${currentApiDetails.modelForToast}). Please try again.`;
 
       if (error && typeof error.message === 'string') {
         const msg = error.message;
         if (msg.includes("API key is not configured")) {
-            descriptiveMessage = `${apiProvider === 'cerebras' ? 'Cerebras' : 'OpenRouter'} API key is not configured. Please check your .env file.`;
-        } else if (msg.includes("API authentication failed (401)")) {
-            descriptiveMessage = `${apiProvider === 'cerebras' ? 'Cerebras' : 'OpenRouter'} API authentication failed (401). Check your API key.`;
-        } else if (msg.includes("API rate limit exceeded (429)")) {
-            descriptiveMessage = `${apiProvider === 'cerebras' ? 'Cerebras' : 'OpenRouter'} API rate limit exceeded (429). Please try again later or check your plan.`;
-        } else if (msg.includes("404") && msg.includes("No allowed providers")) {
-             descriptiveMessage = `OpenRouter Error (404): The selected model/provider combination (${currentOptionDetails.model} via ${openRouterSpecificProvider}) is not available. Please try a different configuration.`;
-        } else if (msg.includes("Recursive schemas are currently not supported")) {
-            descriptiveMessage = `OpenRouter API error (400): The provider (${openRouterSpecificProvider}) does not support the recursive JSON schema needed for this request with model ${currentOptionDetails.model}. Try a different OpenRouter provider or the Direct Cerebras API.`;
-        } else if (msg.includes("Failed to parse") || msg.includes("did not yield a parsable JSON string") || msg.includes("was not valid JSON") || msg.includes("does not match the expected tree structure") || msg.includes("does not appear to contain a parsable JSON object or array") || msg.startsWith("The AI's response was entirely non-JSON")) {
-            descriptiveMessage = `The AI's response could not be processed into a valid subject tree. Details: ${msg}`;
-        } else if (msg.startsWith("Cerebras API") || msg.startsWith("OpenRouter API") || msg.startsWith("AI response")) { 
+            descriptiveMessage = `${currentApiDetails.providerForToast} API key is not configured. Please check your .env file.`;
+        } else if (msg.includes("API request failed with status 401")) {
+            descriptiveMessage = `${currentApiDetails.providerForToast} API authentication failed (401). Check your API key.`;
+        } else if (msg.includes("API request failed with status 429")) {
+            descriptiveMessage = `${currentApiDetails.providerForToast} API rate limit exceeded (429). Please try again later or check your plan.`;
+        } else if (msg.includes("API error") && (msg.includes("Provider returned error") || msg.includes("Recursive schemas are currently not supported") || msg.includes("Problem with model provider configuration") || msg.includes("Problem with the JSON schema") || msg.includes("No allowed providers are available"))) {
+            descriptiveMessage = `The AI model provider encountered an issue processing the request with ${currentApiDetails.providerForToast} (Model: ${currentApiDetails.modelForToast}). Details: ${msg}`;
+        } else if (msg.includes("Failed to parse") || msg.includes("did not yield a parsable JSON string")) {
+            descriptiveMessage = `The AI's response via ${currentApiDetails.providerForToast} (Model: ${currentApiDetails.modelForToast}) could not be processed into a valid subject tree. Details: ${msg}`;
+        } else if (msg.includes("was not valid JSON") || msg.includes("does not match the expected tree structure")) {
+            descriptiveMessage = `The AI's response via ${currentApiDetails.providerForToast} (Model: ${currentApiDetails.modelForToast}) was not a valid or correctly structured subject tree. Details: ${msg}`;
+        } else if (msg.startsWith("API") || msg.startsWith("AI response") || msg.startsWith("OpenRouter API error") || msg.startsWith("Cerebras API error")) { 
             descriptiveMessage = error.message; 
-        } else if (msg.length > 0 && msg.length < 400) { 
+        } else if (msg.length > 0 && msg.length < 300) { 
              descriptiveMessage = error.message;
         }
       }
@@ -174,16 +177,17 @@ export default function SubjectArborPage() {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" className="rounded-full">
                 <Settings className="h-5 w-5" />
-                <span className="sr-only">API Provider Settings</span>
+                <span className="sr-only">Open API Provider Settings</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Select AI Backend</DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-80"> {/* Increased width for longer text */}
+              <DropdownMenuLabel>AI Backend Configuration</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuRadioGroup value={selectedApiOption} onValueChange={handleApiOptionChange}>
-                {API_OPTIONS.map(option => (
-                  <DropdownMenuRadioItem key={option.value} value={option.value}>
-                    {option.label} ({option.model})
+                {(Object.keys(API_OPTION_DETAILS) as SelectedApiOption[]).map(optionKey => (
+                  <DropdownMenuRadioItem key={optionKey} value={optionKey}>
+                    {API_OPTION_DETAILS[optionKey].name}
+                    {selectedApiOption === optionKey && <Check className="ml-auto h-4 w-4" />}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
