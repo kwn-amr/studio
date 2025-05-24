@@ -17,6 +17,11 @@ export interface GenerateSubjectTreeInput {
 
 export interface GenerateSubjectTreeOutput {
   treeData: string; // JSON string representing the hierarchical subject tree
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 // Helper function to extract JSON from a string that might contain markdown or conversational fluff
@@ -182,6 +187,7 @@ export async function generateSubjectTree(
   let rawResponseText = '';
   let finalJsonString: string | null = null;
   const systemPromptContent = commonSystemPrompt(input.fieldOfStudy);
+  let usageData: GenerateSubjectTreeOutput['usage'] | undefined = undefined;
 
   try {
     if (apiProvider === 'openrouter') {
@@ -245,6 +251,9 @@ export async function generateSubjectTree(
       const responseData = JSON.parse(rawResponseText); 
       if (responseData.choices && responseData.choices.length > 0 && responseData.choices[0].message && responseData.choices[0].message.content) {
           finalJsonString = extractJsonFromString(responseData.choices[0].message.content); 
+          if (responseData.usage) {
+            usageData = responseData.usage;
+          }
       } else {
           console.warn("OpenRouter response did not have the expected choices[0].message.content structure. Attempting to extract JSON from the full response body.");
           finalJsonString = extractJsonFromString(rawResponseText);
@@ -279,6 +288,8 @@ export async function generateSubjectTree(
       rawResponseText = accumulatedContent;
       console.log("Raw Cerebras successful accumulated response text (truncated):", rawResponseText.substring(0, 1000));
       finalJsonString = extractJsonFromString(rawResponseText);
+      // Note: Cerebras SDK streaming might not easily provide token usage for the whole request.
+      // usageData will remain undefined for Cerebras in this implementation.
     } else {
       const exhaustiveCheck: never = apiProvider;
       throw new Error(`Unsupported API provider: ${exhaustiveCheck}`);
@@ -298,7 +309,7 @@ export async function generateSubjectTree(
         console.error(`The final derived JSON string from ${currentApiDesc} is invalid. Derived string (partial):`, finalJsonString.substring(0,300), "Error:", e.message);
         throw new Error(`The AI response from ${currentApiDesc}, after processing, was not valid JSON. Extracted segment (partial for debugging): ${finalJsonString.substring(0, 200)}. Original error: ${e.message}`);
     }
-    return { treeData: finalJsonString };
+    return { treeData: finalJsonString, usage: usageData };
 
   } catch (error: any) {
     const currentApiDesc = apiProvider === 'openrouter' ? `OpenRouter (Provider: ${openRouterSpecificProvider || 'Cerebras'})` : 'Cerebras Direct';
@@ -321,3 +332,4 @@ export async function generateSubjectTree(
     throw new Error(`An unexpected error occurred while generating subject tree via ${currentApiDesc}: ${error.message}`);
   }
 }
+

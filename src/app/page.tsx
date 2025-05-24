@@ -6,7 +6,7 @@ import { FieldInputForm } from '@/components/subject-arbor/FieldInputForm';
 import { SubjectTreeDisplay } from '@/components/subject-arbor/SubjectTreeDisplay';
 import { SubjectArborLogo } from '@/components/subject-arbor/SubjectArborLogo';
 import type { TreeNodeData } from '@/types';
-import { generateSubjectTree, type GenerateSubjectTreeInput } from '@/ai/flows/generate-subject-tree';
+import { generateSubjectTree, type GenerateSubjectTreeInput, type GenerateSubjectTreeOutput } from '@/ai/flows/generate-subject-tree';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import {
@@ -60,10 +60,10 @@ export default function SubjectArborPage() {
     if (apiProvider === 'openrouter') {
       effectiveOpenRouterSubProvider = 'Cerebras'; // For now, this is fixed
       processingMessage += `OpenRouter (Provider: ${effectiveOpenRouterSubProvider})...`;
-      successProviderInfo = `OpenRouter (Provider: ${effectiveOpenRouterSubProvider}).`;
+      successProviderInfo = `OpenRouter (Provider: ${effectiveOpenRouterSubProvider})`;
     } else { // cerebras direct
       processingMessage += 'Cerebras (Direct)...';
-      successProviderInfo = 'Cerebras (Direct).';
+      successProviderInfo = 'Cerebras (Direct)';
     }
     processingMessage += ' This may take a moment.';
 
@@ -74,7 +74,7 @@ export default function SubjectArborPage() {
       
     try {
       const input: GenerateSubjectTreeInput = { fieldOfStudy: submittedField };
-      const resultFromAI = await generateSubjectTree(input, apiProvider, effectiveOpenRouterSubProvider);
+      const resultFromAI: GenerateSubjectTreeOutput = await generateSubjectTree(input, apiProvider, effectiveOpenRouterSubProvider);
       
       if (resultFromAI.treeData) {
         try {
@@ -88,7 +88,12 @@ export default function SubjectArborPage() {
           const endTime = performance.now();
           const durationSeconds = ((endTime - startTime) / 1000).toFixed(2);
           
-          let successDescription = `Subject tree for "${submittedField}" generated in ${durationSeconds}s using ${successProviderInfo}`;
+          let successDescription = `Subject tree for "${submittedField}" generated in ${durationSeconds}s using ${successProviderInfo}.`;
+
+          if (resultFromAI.usage) {
+            successDescription += ` (Tokens: P${resultFromAI.usage.prompt_tokens}/C${resultFromAI.usage.completion_tokens}/T${resultFromAI.usage.total_tokens})`;
+          }
+
 
           toast({
             title: "Success!",
@@ -116,15 +121,14 @@ export default function SubjectArborPage() {
         throw new Error(`No tree data string received from AI (${apiProvider === 'openrouter' ? `OpenRouter (Provider: ${effectiveOpenRouterSubProvider})` : 'Cerebras Direct'}), though the call seemed to succeed.`);
       }
     } catch (error: any) {
-      console.error(`Error generating subject tree with ${apiProvider === 'openrouter' ? `OpenRouter (Provider: ${effectiveOpenRouterSubProvider})` : 'Cerebras Direct'}:`, error);
+      console.error(`Error generating subject tree with ${apiProvider === 'openrouter' ? `OpenRouter (Provider: ${effectiveOpenRouterSubProvider})` : 'Cerebras (Direct)'}:`, error);
       setTreeData(null);
       
-      let descriptiveMessage = `An unexpected error occurred while generating the subject tree using ${apiProvider === 'openrouter' ? `OpenRouter (Provider: ${effectiveOpenRouterSubProvider})` : 'Cerebras (Direct)'}. Please try again.`;
+      let descriptiveMessage = `An unexpected error occurred while generating the subject tree using ${apiProvider === 'openrouter' ? `OpenRouter (Provider: ${effectiveOpenRouterSubProvider || 'Default'})` : 'Cerebras (Direct)'}. Please try again.`;
 
       if (error && typeof error.message === 'string') {
         const msg = error.message;
-        // Use a more generic prefix for OpenRouter errors since the sub-provider might change in the future.
-        const currentApiName = apiProvider === 'openrouter' ? `OpenRouter (Provider: ${effectiveOpenRouterSubProvider})` : 'Cerebras (Direct)';
+        const currentApiName = apiProvider === 'openrouter' ? `OpenRouter (Provider: ${effectiveOpenRouterSubProvider || 'Default'})` : 'Cerebras (Direct)';
         
         if (msg.includes("API key is not configured")) {
             descriptiveMessage = `${currentApiName} API key is not configured. Please check your .env file.`;
@@ -133,14 +137,14 @@ export default function SubjectArborPage() {
         } else if (msg.includes("API request failed with status 429")) {
             descriptiveMessage = `${currentApiName} API rate limit exceeded (429). Please try again later or check your plan.`;
         } else if (msg.includes("API error") && (msg.includes("Provider returned error") || msg.includes("Recursive schemas are currently not supported") || msg.includes("Problem with model provider configuration") || msg.includes("Problem with the JSON schema"))) {
-            descriptiveMessage = "The AI model provider encountered an issue. This might be temporary or a model/provider limitation. Details: " + msg;
+            descriptiveMessage = `The AI model provider encountered an issue processing the request with ${currentApiName}. Details: ${msg}`;
         } else if (msg.includes("Failed to parse") || msg.includes("did not yield a parsable JSON string")) {
-            descriptiveMessage = "The AI's response could not be processed into a valid subject tree. Details: " + msg;
+            descriptiveMessage = `The AI's response via ${currentApiName} could not be processed into a valid subject tree. Details: ${msg}`;
         } else if (msg.includes("was not valid JSON") || msg.includes("does not match the expected tree structure")) {
-            descriptiveMessage = "The AI's response was not a valid or correctly structured subject tree. Details: " + msg;
+            descriptiveMessage = `The AI's response via ${currentApiName} was not a valid or correctly structured subject tree. Details: ${msg}`;
         } else if (msg.startsWith("API") || msg.startsWith("AI response") || msg.startsWith("OpenRouter API error") || msg.startsWith("Cerebras API error")) { 
-            descriptiveMessage = error.message; // Use the error message directly if it's already informative
-        } else if (msg.length > 0 && msg.length < 300) { // Catchall for shorter, potentially custom error messages
+            descriptiveMessage = error.message; 
+        } else if (msg.length > 0 && msg.length < 300) { 
              descriptiveMessage = error.message;
         }
       }
