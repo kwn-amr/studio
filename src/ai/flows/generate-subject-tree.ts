@@ -323,27 +323,25 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
         const responseData = JSON.parse(responseBodyText);
 
         if (responseData.choices && responseData.choices[0]?.message?.content) {
-            let treeJsonString = responseData.choices[0].message.content;
+            let rawContent = responseData.choices[0].message.content;
             
-            if (!useJsonSchema) { // If not using schema, attempt extraction
-                 const extracted = extractJsonFromString(treeJsonString);
-                 if (extracted) {
-                    treeJsonString = extracted;
-                 } else {
-                    console.error("Failed to extract JSON from OpenRouter response when not using schema. Response (partial):", treeJsonString.substring(0,500));
-                    throw new Error(`OpenRouter response (Model: ${model}, Provider: ${effectiveORProvider}, No Schema Enforcement) did not yield extractable JSON.`);
-                 }
+            // Always attempt extraction, even if schema was used, as a safeguard.
+            const extractedTreeJsonString = extractJsonFromString(rawContent);
+            
+            if (!extractedTreeJsonString) {
+                console.error(`Failed to extract JSON from OpenRouter response (Model: ${model}, Provider: ${effectiveORProvider}, Schema Used: ${useJsonSchema}). Raw content (partial):`, rawContent.substring(0,500));
+                throw new Error(`OpenRouter response (Model: ${model}, Provider: ${effectiveORProvider}, Schema Used: ${useJsonSchema}) did not yield extractable JSON.`);
             }
             
-            try { // Validate even if schema was used
-                JSON.parse(treeJsonString); 
+            try { // Validate the extracted JSON
+                JSON.parse(extractedTreeJsonString); 
             } catch (e: any) {
-                console.error(`The JSON string from OpenRouter (Model: ${model}, Provider: ${effectiveORProvider}, Schema Used: ${useJsonSchema}) is invalid. String (partial):`, treeJsonString.substring(0,500), "Error:", e.message);
-                throw new Error(`The AI response from OpenRouter was not valid JSON. Error: ${e.message}. Received (partial): ${treeJsonString.substring(0,200)}`);
+                console.error(`The JSON string from OpenRouter (Model: ${model}, Provider: ${effectiveORProvider}, Schema Used: ${useJsonSchema}) is invalid after extraction. Extracted String (partial):`, extractedTreeJsonString.substring(0,500), "Error:", e.message);
+                throw new Error(`The AI response from OpenRouter was not valid JSON. Error: ${e.message}. Received (partial): ${extractedTreeJsonString.substring(0,200)}`);
             }
 
             return { 
-                treeData: treeJsonString,
+                treeData: extractedTreeJsonString,
                 usage: responseData.usage 
             };
         } else {
