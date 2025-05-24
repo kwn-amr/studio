@@ -45,7 +45,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
     zoomBehavior: null, 
     i: 0, 
     dimensions: {width: 0, height: 0},
-    margin: { top: 20, right: 120, bottom: 20, left: 120 } // Standard margin
+    margin: { top: 20, right: 120, bottom: 20, left: 120 }
   });
 
   const animationDuration = 750;
@@ -63,19 +63,18 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
   }, []);
 
   const updateChart = useCallback((sourceNode?: D3HierarchyNode) => {
-    if (!d3State.current.g || !d3State.current.root || !d3State.current.treeLayout || !tooltipRef.current) return;
+    if (!d3State.current.g || !d3State.current.root || !d3State.current.treeLayout || !tooltipRef.current || !graphWrapperRef.current) return;
     
     const g = d3State.current.g;
     const rootNode = d3State.current.root;
-    const treeLayout = d3State.current.treeLayout; // Already configured with nodeSize
+    const treeLayout = d3State.current.treeLayout;
     const tooltip = d3.select(tooltipRef.current);
+    const currentGraphWrapper = graphWrapperRef.current;
+
 
     const treeDataLayout = treeLayout(rootNode); 
     const nodes = treeDataLayout.descendants() as D3HierarchyNode[];
     const links = treeDataLayout.links() as d3.Link<unknown, D3HierarchyNode, D3HierarchyNode>[];
-
-    // With nodeSize, d.x and d.y are set by the layout directly.
-    // No need for: nodes.forEach(d => { d.y = d.depth * 180; });
 
     const effectiveSource = sourceNode || rootNode;
 
@@ -84,17 +83,20 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
 
     const nodeEnter = node.enter().append('g')
       .attr('class', 'node')
-      .attr('transform', `translate(${effectiveSource.y0 || 0},${effectiveSource.x0 || 0})`) // Use 0 if undefined
+      .attr('transform', `translate(${effectiveSource.y0 || 0},${effectiveSource.x0 || 0})`)
       .on('click', (event, d) => handleClick(d))
       .on('mouseover', (event, dNode) => {
         let tooltipContent = `<strong>${dNode.data.name}</strong>`;
         if (dNode.data.description && dNode.data.description.trim() !== '') {
-          tooltipContent += `<br><small style="display: block; margin-top: 4px; color: hsl(var(--muted-foreground));">${dNode.data.description}</small>`;
+          tooltipContent += `<br><small style="display: block; margin-top: 4px; color: hsl(var(--muted-foreground));">${dNode.data.description.trim()}</small>`;
         }
+        
+        const [mx, my] = d3.pointer(event, currentGraphWrapper);
         tooltip.style('opacity', 1)
                .html(tooltipContent)
-               .style('left', (event.pageX + 15) + 'px')
-               .style('top', (event.pageY - 28) + 'px');
+               .style('left', (mx + 15) + 'px')
+               .style('top', (my + 10) + 'px'); // Position below and to the right of cursor
+
         d3.select(event.currentTarget).select('circle').classed('hovered', true);
          g.selectAll<SVGPathElement, d3.Link<unknown, D3HierarchyNode, D3HierarchyNode>>('path.link')
             .classed('highlighted', l => l.source === dNode || l.target === dNode);
@@ -145,7 +147,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
     const linkEnter = link.enter().insert('path', 'g')
       .attr('class', 'link')
       .attr('d', () => {
-        const o = { x: effectiveSource.x0 || 0, y: effectiveSource.y0 || 0 }; // Use 0 if undefined
+        const o = { x: effectiveSource.x0 || 0, y: effectiveSource.y0 || 0 };
         return d3.linkHorizontal<any, {x:number, y:number}>().x(dNode => dNode.y).y(dNode => dNode.x)({ source: o, target: o });
       });
 
@@ -160,7 +162,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
     link.exit().transition()
       .duration(animationDuration)
       .attr('d', () => {
-        const o = { x: effectiveSource.x || 0, y: effectiveSource.y || 0 };  // Use 0 if undefined
+        const o = { x: effectiveSource.x || 0, y: effectiveSource.y || 0 }; 
         return d3.linkHorizontal<any, {x:number, y:number}>().x(dNode => dNode.y).y(dNode => dNode.x)({ source: o, target: o });
       })
       .remove();
@@ -277,19 +279,13 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
             d3State.current.g = svg.append('g')
                 .attr('transform', `translate(${margin.left},${margin.top})`);
             
-            // Configure treeLayout with nodeSize for consistent spacing
-            d3State.current.treeLayout = d3.tree<TreeNodeData>().nodeSize([35, 220]); // [verticalNodeSeparation, horizontalLevelSeparation]
+            d3State.current.treeLayout = d3.tree<TreeNodeData>().nodeSize([35, 220]);
         } 
         
         if (d3State.current.root) { 
-            // treeLayout.size is not needed when nodeSize is used.
-            // The graph dimensions are determined by the layout itself.
             if (d3State.current.zoomBehavior && d3State.current.g) {
-                // Center the graph initially - adjust scale if needed
-                // This might need further refinement if the graph extent is very large
-                const initialTransform = d3.zoomIdentity.translate(margin.left, margin.top).scale(0.8); // Start slightly zoomed out
+                const initialTransform = d3.zoomIdentity.translate(margin.left, margin.top).scale(0.8);
                 svg.call(d3State.current.zoomBehavior.transform, initialTransform);
-                // d3State.current.g.attr('transform', initialTransform.toString()); // Zoom behavior handles this
             }
             updateChart(d3State.current.root);
         }
@@ -308,7 +304,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
       }
       resizeObserver.disconnect();
     };
-  }, [getContainerDimensions, updateChart]); // updateChart dependency is important
+  }, [getContainerDimensions, updateChart]);
 
   useEffect(() => {
     if (!treeData || !d3State.current.g || !d3State.current.treeLayout || d3State.current.dimensions.width === 0) {
@@ -318,7 +314,6 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
     }
     
     const { margin } = d3State.current;
-    // Using a fixed arbitrary value for initial x0, actual positioning comes from layout
     const initialX0 = d3State.current.dimensions.height / 2 || 200; 
 
     const rootNode = d3.hierarchy(treeData, d => d.children) as D3HierarchyNode;
@@ -337,9 +332,6 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
     setIsFullyExpanded(false); 
     
     if (d3State.current.svg && d3State.current.zoomBehavior && d3State.current.g) {
-        // Center the graph. For nodeSize layout, x0 can be set based on an arbitrary point,
-        // as the first call to treeLayout(rootNode) will compute the positions.
-        // The transform helps to position the root node initially.
         const initialTransform = d3.zoomIdentity.translate(margin.left, initialX0).scale(0.8);
         d3State.current.svg.call(d3State.current.zoomBehavior.transform, initialTransform);
     }
