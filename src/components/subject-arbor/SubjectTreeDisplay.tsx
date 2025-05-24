@@ -3,7 +3,6 @@
 
 import * as React from 'react';
 import type { TreeNodeData } from '@/types';
-// D3HierarchyNode import removed as it's not directly used here after refactor
 import { TreeNode } from './TreeNode';
 import { D3SubjectGraph } from './D3SubjectGraph';
 import { Button } from '@/components/ui/button';
@@ -26,8 +25,8 @@ export function SubjectTreeDisplay({
   fieldOfStudy,
   isLoading,
   onGenerateMoreChildren,
-  activeNodeGeneratingMore, // Make sure this is received from props
-  setActiveNodeGeneratingMore, // Make sure this is received from props
+  activeNodeGeneratingMore,
+  setActiveNodeGeneratingMore,
 }: SubjectTreeDisplayProps) {
   
   const handleExportJson = () => {
@@ -73,7 +72,8 @@ export function SubjectTreeDisplay({
 
   const commonHeightClass = "h-[calc(100vh-22rem)] md:h-[calc(100vh-16rem)]";
   // isProcessingAction is true if initial tree is loading, not when generating more for D3
-  const isInitialTreeLoading = isLoading && !!fieldOfStudy;
+  const isInitialTreeLoading = isLoading && !!fieldOfStudy && !activeNodeGeneratingMore;
+
 
   return (
     <Card className="h-full flex flex-col">
@@ -95,7 +95,7 @@ export function SubjectTreeDisplay({
         )}
       </CardHeader>
       <CardContent className="flex-grow p-0 flex flex-col relative">
-        {isInitialTreeLoading && ( // Show full-card loader only if initial tree is loading (and not "generate more")
+        {isInitialTreeLoading && ( // Show full-card loader only if initial tree is loading
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-20">
                 <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
                 <p className="text-muted-foreground text-center">
@@ -124,14 +124,14 @@ export function SubjectTreeDisplay({
                 </ul>
               </ScrollArea>
             </TabsContent>
-            <TabsContent value="graph" className={`flex-grow ${commonHeightClass} overflow-visible`}> {/* Removed overflow-hidden */}
+            <TabsContent value="graph" className={`flex-grow ${commonHeightClass}`}> {/* Removed overflow-hidden for tooltip visibility */}
               <D3SubjectGraph
                 treeData={treeData}
                 fieldOfStudy={fieldOfStudy || 'subject'}
                 onGenerateMoreChildren={onGenerateMoreChildren}
                 isProcessingAction={isInitialTreeLoading} 
-                activeNodeGeneratingMore={activeNodeGeneratingMore} // Pass this prop
-                setActiveNodeGeneratingMore={setActiveNodeGeneratingMore} // Pass this prop
+                activeNodeGeneratingMore={activeNodeGeneratingMore}
+                setActiveNodeGeneratingMore={setActiveNodeGeneratingMore}
               />
             </TabsContent>
           </Tabs>
