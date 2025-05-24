@@ -24,7 +24,7 @@ interface D3HierarchyNode extends d3.HierarchyPointNode<TreeNodeData> {
 export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const graphWrapperRef = useRef<HTMLDivElement>(null); // For PNG export and sizing
+  const graphWrapperRef = useRef<HTMLDivElement>(null); 
 
   const [isFullyExpanded, setIsFullyExpanded] = useState(false);
   
@@ -56,18 +56,18 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
     if (!d3State.current.g || !d3State.current.root || !d3State.current.treeLayout || !tooltipRef.current) return;
 
     const { width, height } = d3State.current.dimensions;
-    const margin = { top: 20, right: 120, bottom: 20, left: 120 }; // Adjusted for controls potentially
+    const margin = { top: 20, right: 120, bottom: 20, left: 120 }; 
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
-    if (innerWidth <=0 || innerHeight <=0) return; // Avoid errors on tiny containers
+    if (innerWidth <=0 || innerHeight <=0) return;
 
     const g = d3State.current.g;
     const rootNode = d3State.current.root;
     const treeLayout = d3State.current.treeLayout.size([innerHeight, innerWidth]);
     const tooltip = d3.select(tooltipRef.current);
 
-    const treeDataLayout = treeLayout(rootNode); // treeLayout(rootNode) not treeData
+    const treeDataLayout = treeLayout(rootNode); 
     const nodes = treeDataLayout.descendants() as D3HierarchyNode[];
     const links = treeDataLayout.links() as d3.Link<unknown, D3HierarchyNode, D3HierarchyNode>[];
 
@@ -84,7 +84,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
       .on('click', (event, d) => handleClick(d))
       .on('mouseover', (event, dNode) => {
         tooltip.style('opacity', 1)
-               .html(`<strong>${dNode.data.name}</strong>`)
+               .html(`<strong>${dNode.data.name}</strong>${dNode.data.description ? `<br><small style="display: block; margin-top: 4px;">${dNode.data.description}</small>` : ''}`)
                .style('left', (event.pageX + 15) + 'px')
                .style('top', (event.pageY - 28) + 'px');
         d3.select(event.currentTarget).select('circle').classed('hovered', true);
@@ -125,7 +125,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
 
     const nodeExit = node.exit().transition()
       .duration(animationDuration)
-      .attr('transform', `translate(${effectiveSource.y || 0},${effectiveSource.x || 0})`) // Ensure source.y and source.x are defined
+      .attr('transform', `translate(${effectiveSource.y || 0},${effectiveSource.x || 0})`) 
       .remove();
 
     nodeExit.select('circle').attr('r', 1e-6);
@@ -152,7 +152,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
     link.exit().transition()
       .duration(animationDuration)
       .attr('d', () => {
-        const o = { x: effectiveSource.x || 0, y: effectiveSource.y || 0 }; // Ensure source.x and source.y are defined
+        const o = { x: effectiveSource.x || 0, y: effectiveSource.y || 0 }; 
         return d3.linkHorizontal<any, {x:number, y:number}>().x(dNode => dNode.y).y(dNode => dNode.x)({ source: o, target: o });
       })
       .remove();
@@ -161,7 +161,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
       d.x0 = d.x;
       d.y0 = d.y;
     });
-  }, [animationDuration, nodeRadius]); // Added dependencies
+  }, [animationDuration, nodeRadius]); 
 
   const collapse = useCallback((d: D3HierarchyNode) => {
     if (d.children) {
@@ -176,9 +176,8 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
         d._children = d.children;
         if (keepRootChildren && d === d3State.current.root) {
             d.children.forEach(child => {
-                if(child.children) collapseAll(child, false); // Collapse grandchildren and below
+                if(child.children) collapseAll(child, false); 
             });
-            // d.children remains for root, but their children are now in _children
         } else {
             d.children.forEach(child => collapseAll(child, false));
             d.children = undefined;
@@ -190,7 +189,6 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
   const expand = useCallback((d: D3HierarchyNode) => {
     if (d._children) {
       d.children = d._children;
-      // d.children.forEach(expand); // This would fully expand, not just one level
       d._children = undefined;
     }
   }, []);
@@ -206,10 +204,10 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
   }, []);
 
   const handleClick = useCallback((d: D3HierarchyNode) => {
-    if (d.children) { // If expanded, collapse it
+    if (d.children) { 
       d._children = d.children;
       d.children = undefined;
-    } else if (d._children) { // If collapsed, expand it
+    } else if (d._children) { 
       d.children = d._children;
       d._children = undefined;
     }
@@ -219,10 +217,8 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
   const handleToggleExpandAll = () => {
     if (!d3State.current.root) return;
     if (isFullyExpanded) {
-      // Collapse to initial state (root's children visible)
       collapseAll(d3State.current.root, true);
     } else {
-      // Expand all
       expandAll(d3State.current.root);
     }
     setIsFullyExpanded(!isFullyExpanded);
@@ -232,8 +228,8 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
   const handleExportPng = useCallback(() => {
     if (svgRef.current) {
       toPng(svgRef.current, { 
-          backgroundColor: 'hsl(var(--background))', // Use theme background
-          pixelRatio: 2 // Higher resolution
+          backgroundColor: 'hsl(var(--background))', 
+          pixelRatio: 2 
       })
         .then((dataUrl) => {
           const link = document.createElement('a');
@@ -243,7 +239,6 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
         })
         .catch((err) => {
           console.error('Failed to export PNG:', err);
-          // Potentially show a toast notification for the error
         });
     }
   }, [fieldOfStudy]);
@@ -262,7 +257,7 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
         if (!d3State.current.svg) { 
             d3State.current.svg = svg;
             d3State.current.zoomBehavior = d3.zoom<SVGSVGElement, unknown>()
-              .scaleExtent([0.1, 5]) // Zoom limits
+              .scaleExtent([0.1, 5]) 
               .on('zoom', (event) => {
                 if (d3State.current.g) {
                 d3State.current.g.attr('transform', event.transform);
@@ -284,7 +279,6 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
             if(d3State.current.treeLayout && innerWidth > 0 && innerHeight > 0) {
               d3State.current.treeLayout.size([innerHeight, innerWidth]);
             }
-            // Center graph initially after resize if zoom behavior is present
             if (d3State.current.zoomBehavior && d3State.current.g) {
                 const initialTransform = d3.zoomIdentity.translate(margin.left, margin.top).scale(1);
                 svg.call(d3State.current.zoomBehavior.transform, initialTransform);
@@ -318,12 +312,11 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
     
     const { height } = d3State.current.dimensions;
     const rootNode = d3.hierarchy(treeData, d => d.children) as D3HierarchyNode;
-    rootNode.x0 = height / 2; // Centered for horizontal tree
+    rootNode.x0 = height / 2; 
     rootNode.y0 = 0;
     d3State.current.root = rootNode;
     d3State.current.i = 0; 
 
-    // Collapse children of the root's children, but keep root's children visible (initial state)
     if (rootNode.children) {
       rootNode.children.forEach(child => {
         if (child.children) {
@@ -331,9 +324,8 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
         }
       });
     }
-    setIsFullyExpanded(false); // Reset expansion state on new data
+    setIsFullyExpanded(false); 
     
-    // Initial centering
     const margin = { top: 20, right: 120, bottom: 20, left: 120 };
     if (d3State.current.svg && d3State.current.zoomBehavior && d3State.current.g) {
         const initialTransform = d3.zoomIdentity.translate(margin.left, margin.top).scale(1);
@@ -363,8 +355,8 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
         className="d3-tooltip"
         style={{
           position: 'absolute',
-          textAlign: 'center',
-          padding: '4px 8px',
+          textAlign: 'left',
+          padding: '6px 10px',
           font: '12px sans-serif',
           background: 'hsl(var(--popover))',
           color: 'hsl(var(--popover-foreground))',
@@ -373,11 +365,11 @@ export function D3SubjectGraph({ treeData, fieldOfStudy }: D3SubjectGraphProps) 
           pointerEvents: 'none',
           opacity: 0,
           transition: 'opacity 0.2s ease-out',
-          boxShadow: '0 3px 6px rgba(0,0,0,0.1)',
+          boxShadow: '0 3px 8px rgba(0,0,0,0.15)',
           zIndex: 10, 
+          maxWidth: '250px', // Max width for tooltip
         }}
       ></div>
     </div>
   );
 }
-

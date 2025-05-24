@@ -20,7 +20,7 @@ export function TreeNode({ node, level, defaultExpanded = false }: TreeNodeProps
   const hasChildren = node.children && node.children.length > 0;
 
   const handleToggle = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent event bubbling if node itself is clickable for other actions
+    e.stopPropagation(); 
     if (hasChildren) {
       setIsExpanded(!isExpanded);
     }
@@ -41,7 +41,7 @@ export function TreeNode({ node, level, defaultExpanded = false }: TreeNodeProps
             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </Button>
         ) : (
-          <span className="inline-block w-7 h-7 mr-1 shrink-0"></span> // Placeholder for alignment
+          <span className="inline-block w-7 h-7 mr-1 shrink-0"></span> 
         )}
         <TooltipProvider delayDuration={300}>
           <Tooltip>
@@ -50,8 +50,16 @@ export function TreeNode({ node, level, defaultExpanded = false }: TreeNodeProps
                 {node.name}
               </span>
             </TooltipTrigger>
-            <TooltipContent side="right" className="bg-popover text-popover-foreground p-2 rounded-md shadow-lg">
-              <p>{node.name}</p>
+            <TooltipContent 
+              side="right" 
+              className="bg-popover text-popover-foreground p-2 rounded-md shadow-lg max-w-xs break-words"
+            >
+              <p className="font-semibold">{node.name}</p>
+              {node.description && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {node.description}
+                </p>
+              )}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
