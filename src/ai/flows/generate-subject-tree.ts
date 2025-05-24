@@ -208,7 +208,7 @@ export async function generateSubjectTree(
       const effectiveORProvider = openRouterSpecificProvider || "Cerebras"; 
       const providerConfig = { "only": [effectiveORProvider] };
 
-      const requestPayload = {
+      const requestPayload: any = {
         model: modelToUse,
         provider: providerConfig,
         messages: [
@@ -219,8 +219,10 @@ export async function generateSubjectTree(
         max_tokens: 4048, 
         top_p: 0.95,
       };
+      // IMPORTANT: Do not use response_format.json_schema with Cerebras provider on OpenRouter
+      // as it has issues with recursive schemas. Rely on strong prompting.
       console.log(`OpenRouter Request: Model ${modelToUse}, Provider ${effectiveORProvider}, Field: ${input.fieldOfStudy}`);
-      console.log("OpenRouter Request Payload (partial messages):", JSON.stringify({...requestPayload, messages: [{role: "system", content: "System prompt summarized..."}, requestPayload.messages[1]]}, null, 2));
+      console.log("OpenRouter Request Payload (partial messages, no response_format):", JSON.stringify({...requestPayload, messages: [{role: "system", content: "System prompt summarized..."}, requestPayload.messages[1]]}, null, 2));
 
 
       const response = await fetch(url, {
@@ -237,9 +239,9 @@ export async function generateSubjectTree(
             const errorData = JSON.parse(rawResponseText);
             if (errorData.error && errorData.error.message) {
                 errorMessage += ` Details: ${errorData.error.message}`;
-                if (errorData.error.message.includes("Provider returned error")) {
-                    errorMessage = `OpenRouter API error (${response.status}): Provider (${effectiveORProvider}) returned error for model ${modelToUse}. Raw provider message: ${errorData.error.metadata?.raw || 'N/A'}`;
-                } else if (errorData.error.code === 'invalid_request_error' && errorData.error.param === 'response_format') { // This might not be hit anymore as response_format is removed for this path
+                if (errorData.error.message.includes("Provider returned error") || errorData.error.message.includes("No allowed providers are available")) {
+                    errorMessage = `OpenRouter API error (${response.status}): Provider (${effectiveORProvider}) returned error for model ${modelToUse}. Raw provider message: ${errorData.error.metadata?.raw || errorData.error.message || 'N/A'}`;
+                } else if (errorData.error.code === 'invalid_request_error' && errorData.error.param === 'response_format') { 
                    errorMessage = `OpenRouter API error: Problem with response_format (model: ${modelToUse}, provider: ${effectiveORProvider}). Details: ${errorData.error.message}`;
               }
             }
