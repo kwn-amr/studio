@@ -4,7 +4,7 @@
 import * as React from 'react';
 import type { TreeNodeData } from '@/types';
 import { TreeNode } from './TreeNode';
-import { D3SubjectGraph, type D3HierarchyNode } from './D3SubjectGraph'; // Import D3HierarchyNode
+import { D3SubjectGraph } from './D3SubjectGraph';
 import { Button } from '@/components/ui/button';
 import { Download, FileText, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,20 +14,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 interface SubjectTreeDisplayProps {
   treeData: TreeNodeData | null;
   fieldOfStudy: string | null;
-  isLoading: boolean;
+  isLoading: boolean; // Combined loading state (initial gen OR more children gen)
   onGenerateMoreChildren: (targetNodePath: string[], fieldOfStudy: string) => Promise<void>;
 }
 
 export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenerateMoreChildren }: SubjectTreeDisplayProps) {
   
-  const handleD3GenerateMore = async (targetNode: D3HierarchyNode, currentFieldOfStudy: string) => {
-    if (!targetNode || !currentFieldOfStudy) return;
-    // Construct path to the node. D3 node's ancestors include itself, so we reverse and take names.
-    // Path is from root to target.
-    const path = targetNode.ancestors().map(n => n.data.name).reverse();
-    await onGenerateMoreChildren(path, currentFieldOfStudy);
-  };
-
   const handleExportJson = () => {
     if (!treeData) return;
     const jsonString = JSON.stringify(treeData, null, 2);
@@ -77,7 +69,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
         <CardTitle className="text-xl font-semibold">
           {fieldOfStudy ? `Subject Map for ${fieldOfStudy}` : 'Subject Map'}
         </CardTitle>
-        {treeData && !isLoading && (
+        {treeData && !isLoading && ( // Only show export if not globally loading
           <div className="flex items-center gap-2 ml-auto">
             <Button variant="outline" size="sm" onClick={handleExportMarkdown}>
               <FileText className="mr-2 h-4 w-4" />
@@ -91,7 +83,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
         )}
       </CardHeader>
       <CardContent className="flex-grow p-0 flex flex-col relative">
-        {isLoading && (
+        {isLoading && !treeData && ( // Show full-card loader only if initial tree is loading
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-20">
                 <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
                 <p className="text-muted-foreground text-center">
@@ -107,7 +99,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
             </p>
           </div>
         )}
-        {treeData && ( // Render tabs even if isLoading is true for "generating more"
+        {treeData && (
           <Tabs defaultValue="list" className="w-full flex flex-col flex-grow p-6 pt-2">
             <TabsList className="mb-4 self-start">
               <TabsTrigger value="list">List View</TabsTrigger>
@@ -120,12 +112,12 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
                 </ul>
               </ScrollArea>
             </TabsContent>
-            <TabsContent value="graph" className={`flex-grow ${commonHeightClass}`}> {/* Removed overflow-hidden */}
-              <D3SubjectGraph 
-                treeData={treeData} 
-                fieldOfStudy={fieldOfStudy || 'subject'} 
-                onGenerateMoreChildren={(d3Node) => handleD3GenerateMore(d3Node, fieldOfStudy || 'Unknown Field')}
-                isProcessingAction={isLoading && !fieldOfStudy} // Pass down if main generation is happening
+            <TabsContent value="graph" className={`flex-grow ${commonHeightClass}`}>
+              <D3SubjectGraph
+                treeData={treeData}
+                fieldOfStudy={fieldOfStudy || 'subject'}
+                onGenerateMoreChildren={onGenerateMoreChildren} // Pass the prop directly
+                isProcessingAction={isLoading && !!fieldOfStudy} // Pass overall loading state for initial generation
               />
             </TabsContent>
           </Tabs>
