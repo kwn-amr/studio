@@ -34,7 +34,7 @@ export interface GenerateSubjectTreeOutput {
 // Helper function to extract JSON from a string that might contain markdown or conversational fluff
 function extractJsonFromString(text: string): string | null {
     if (!text || !text.trim()) {
-        console.warn("extractJsonFromString called with empty or whitespace-only text.");
+        console.warn("[extractJsonFromString] Called with empty or whitespace-only text.");
         return null;
     }
 
@@ -67,7 +67,7 @@ function extractJsonFromString(text: string): string | null {
     }
     
     if (!textToParse) {
-        console.warn("After cleaning, the response string for JSON extraction is empty.");
+        console.warn("[extractJsonFromString] After cleaning, the response string for JSON extraction is empty.");
         return null;
     }
     
@@ -89,9 +89,11 @@ function extractJsonFromString(text: string): string | null {
     }
 
     if (!openChar || !closeChar || startIndex === -1) {
-        console.warn("Could not find a starting '{' or '[' for JSON extraction in cleaned text:", textToParse.substring(0,200));
+        console.warn("[extractJsonFromString] Could not find a starting '{' or '[' for JSON extraction in cleaned text (first 200 chars):", textToParse.substring(0,200));
         return null;
     }
+    console.log("[extractJsonFromString] Attempting brace/bracket balancing. Cleaned text starts with (first 200 chars of relevant part):", textToParse.substring(startIndex, startIndex + 200));
+
 
     let balance = 0;
     let inString = false;
@@ -125,12 +127,11 @@ function extractJsonFromString(text: string): string | null {
         }
     }
     
-    console.warn("Could not find a balanced JSON structure in cleaned text:", textToParse.substring(0,200));
+    console.warn("[extractJsonFromString] Could not find a balanced JSON structure in cleaned text (first 200 chars of relevant part):", textToParse.substring(startIndex, startIndex + 200));
     return null;
 }
 
 function getCommonSystemPrompt(fieldOfStudy: string, forProvider: 'OpenRouter' | 'Cerebras'): string {
-  // Common prompt, slightly adjusted based on known provider quirks or schema enforcement
   return `You are an expert in structuring fields of study into comprehensive and detailed tree graphs.
 Your SOLE task is to generate a JSON string representing an extensive tree graph of subjects.
 The root node MUST be the field of study itself, which is "${fieldOfStudy}".
@@ -196,30 +197,32 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
     }
 
     const url = "https://openrouter.ai/api/v1/chat/completions";
-    const headers = {
+    const headers: HeadersInit = {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://your-app-url.com", // Replace with your actual app URL
-        "X-Title": "Subject Arbor App" // Replace with your app's title
+        "HTTP-Referer": "https://subject-arbor.web.app", // Replace with your actual app URL
+        "X-Title": "Subject Arbor App" 
     };
 
     let model: string;
     let useJsonSchema: boolean;
+    let effectiveORProvider = openRouterSpecificProvider || "Default (OpenRouter routing)";
 
     if (openRouterSpecificProvider === 'Chutes') {
-        model = "qwen/qwen3-30b-a3b:free"; // Qwen3-30B is a good free tier model
-        useJsonSchema = true; // Assume Chutes can handle recursive schemas
+        model = "qwen/qwen3-30b-a3b:free";
+        useJsonSchema = true; 
+        effectiveORProvider = "Chutes";
     } else if (openRouterSpecificProvider === 'Cerebras') {
-        model = "meta-llama/llama-3.3-70b-instruct"; // Llama 3.3 70B is powerful
+        model = "meta-llama/llama-3.3-70b-instruct";
         useJsonSchema = false; // Cerebras provider had issues with recursive schemas
+        effectiveORProvider = "Cerebras";
     } else {
         // Default OpenRouter behavior if no specific provider or an unknown one is passed
-        model = "nousresearch/nous-hermes-2-mixtral-8x7b-dpo"; // A generally good model
-        useJsonSchema = true; // Assume default routing can handle schemas
+        model = "nousresearch/nous-hermes-2-mixtral-8x7b-dpo"; 
+        useJsonSchema = true; 
         console.warn(`Unknown or unspecified OpenRouter provider: ${openRouterSpecificProvider}. Defaulting to ${model} and using JSON schema.`);
     }
     
-    const effectiveORProvider = openRouterSpecificProvider || "Default (OpenRouter Choice)";
     console.log(`Using OpenRouter. Provider: ${effectiveORProvider}, Model: ${model}, Use JSON Schema: ${useJsonSchema}`);
 
     const subjectTreeJsonSchema = {
@@ -265,11 +268,11 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
             { role: "user", content: `Generate a valid, highly detailed, and comprehensive JSON subject tree with descriptions for "${fieldOfStudy}", strictly adhering to the system prompt's instructions. Focus on depth, breadth, and concise one-sentence descriptions for each node.` }
         ],
         temperature: 0.2,
-        max_tokens: 4096, // Increased for potentially larger trees
+        max_tokens: 4096, 
     };
 
     if (openRouterSpecificProvider) {
-        requestPayload.provider = { "only": [openRouterSpecificProvider] };
+      requestPayload.provider = { "only": [openRouterSpecificProvider] };
     }
 
     if (useJsonSchema) {
@@ -279,7 +282,12 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
         };
     }
     
-    console.log("OpenRouter Request Payload (partial):", { ...requestPayload, messages: "[...]" });
+    // Log only a part of the payload to avoid logging potentially large schema
+    const loggablePayload = {...requestPayload};
+    if (loggablePayload.response_format && loggablePayload.response_format.json_schema) {
+      loggablePayload.response_format = {...loggablePayload.response_format, json_schema: "{...schema...}"};
+    }
+    console.log("OpenRouter Request Payload (schema truncated if present):", JSON.stringify(loggablePayload, null, 2));
 
 
     let responseBodyText = '';
@@ -298,8 +306,12 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
                 const errorData = JSON.parse(responseBodyText);
                 console.error("OpenRouter API Error Data:", errorData);
                 errorMessage += ` Details: ${errorData.error?.message || responseBodyText}`;
-                if (errorData.error?.metadata?.raw) {
-                  errorMessage += ` Raw provider message: ${errorData.error.metadata.raw}`;
+                if (errorData.error?.code === "wrong_api_format" && errorData.error?.param === "response_format"){
+                    errorMessage = `OpenRouter API error (400): Provider (${effectiveORProvider}) returned error for model ${model}. Raw provider message: ${errorData.error?.metadata?.raw || 'No raw provider message.'}`;
+                } else if (errorData.error?.message && errorData.error.message.includes("No allowed providers")) {
+                    errorMessage = `OpenRouter API error (404): No allowed providers are available for the model ${model} with provider constraint ${effectiveORProvider}.`;
+                } else if (errorData.error?.message) {
+                    errorMessage = `OpenRouter API error (${response.status}): ${errorData.error.message}. Model: ${model}, Provider: ${effectiveORProvider}.`;
                 }
             } catch (e) {
                 errorMessage += ` Could not parse error response body: ${responseBodyText.substring(0, 200)}`;
@@ -313,29 +325,22 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
         if (responseData.choices && responseData.choices[0]?.message?.content) {
             let treeJsonString = responseData.choices[0].message.content;
             
-            // If not using JSON schema, we might need to extract from markdown
-            if (!useJsonSchema) {
+            if (!useJsonSchema) { // If not using schema, attempt extraction
                  const extracted = extractJsonFromString(treeJsonString);
                  if (extracted) {
                     treeJsonString = extracted;
                  } else {
                     console.error("Failed to extract JSON from OpenRouter response when not using schema. Response (partial):", treeJsonString.substring(0,500));
-                    throw new Error("OpenRouter response (without schema enforcement) did not yield extractable JSON.");
+                    throw new Error(`OpenRouter response (Model: ${model}, Provider: ${effectiveORProvider}, No Schema Enforcement) did not yield extractable JSON.`);
                  }
             }
             
-            // Basic validation even if schema was used, as a fallback
-            try {
-                const parsedForValidation = JSON.parse(treeJsonString);
-                if (typeof parsedForValidation.name !== 'string' || !Array.isArray(parsedForValidation.children)) {
-                    console.warn("Extracted/Received JSON from OpenRouter does not have the expected root structure (name: string, children: array). Parsed (partial):", treeJsonString.substring(0, 300));
-                    // Don't throw here, let the main page.tsx validation handle it, but log.
-                }
+            try { // Validate even if schema was used
+                JSON.parse(treeJsonString); 
             } catch (e: any) {
-                console.error("The JSON string from OpenRouter is invalid. String (partial):", treeJsonString.substring(0,500), "Error:", e.message);
-                throw new Error(`The AI response from OpenRouter was not valid JSON, even if schema was used. Error: ${e.message}. Received (partial): ${treeJsonString.substring(0,200)}`);
+                console.error(`The JSON string from OpenRouter (Model: ${model}, Provider: ${effectiveORProvider}, Schema Used: ${useJsonSchema}) is invalid. String (partial):`, treeJsonString.substring(0,500), "Error:", e.message);
+                throw new Error(`The AI response from OpenRouter was not valid JSON. Error: ${e.message}. Received (partial): ${treeJsonString.substring(0,200)}`);
             }
-
 
             return { 
                 treeData: treeJsonString,
@@ -343,13 +348,13 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
             };
         } else {
             console.error("Unexpected response structure from OpenRouter:", responseData);
-            throw new Error('Failed to get a valid tree from OpenRouter API. Response structure was unexpected.');
+            throw new Error(`Failed to get a valid tree from OpenRouter API (Model: ${model}, Provider: ${effectiveORProvider}). Response structure was unexpected.`);
         }
 
     } catch (error: any) {
         console.error(`Error processing OpenRouter request for model ${model} via ${effectiveORProvider}:`, error);
-        if (error instanceof Error && (error.message.includes("API request failed") || error.message.includes("Unexpected response structure") || error.message.includes("was not valid JSON") || error.message.includes("did not yield extractable JSON"))) {
-            throw error; // Re-throw specific, already formatted errors
+        if (error instanceof Error && (error.message.includes("API request failed") || error.message.includes("Unexpected response structure") || error.message.includes("was not valid JSON") || error.message.includes("did not yield extractable JSON") || error.message.includes("OpenRouter API error"))) {
+            throw error; 
         }
         throw new Error(`Failed to generate tree via OpenRouter (Model: ${model}, Provider: ${effectiveORProvider}): ${error.message}`);
     }
@@ -372,10 +377,10 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
     try {
         const stream = await cerebras.chat.completions.create({
             messages: messages,
-            model: 'qwen-3-32b',
+            model: 'qwen-3-32b', // Consistent model name
             stream: true,
-            max_completion_tokens: 16382,
-            temperature: 0.2, 
+            max_completion_tokens: 16382, 
+            temperature: 0.2, // Lowered temperature for more focused JSON
             top_p: 0.95,
         });
 
@@ -394,23 +399,26 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
         const finalJsonString = extractJsonFromString(rawResponseText);
         
         if (!finalJsonString) {
-          console.error("After attempting to get content from Cerebras, no valid JSON string was derived. Original response (partial):", rawResponseText.substring(0, 500));
-          throw new Error("The AI's response from Cerebras, after processing, did not yield a parsable JSON string.");
+          console.error(
+            "Cerebras API: extractJsonFromString returned null, meaning no valid JSON structure could be isolated from the model's response. "+
+            "This usually indicates the model did not output JSON or its output was too malformed. " +
+            "Review server logs for '[extractJsonFromString]' warnings which show the cleaned text. " +
+            "Original raw model response (first 500 chars):", 
+            rawResponseText.substring(0, 500)
+          );
+          throw new Error(
+            "Cerebras API Error: The model's response could not be processed into a parsable JSON string, even after cleaning. "+
+            "This often means the AI did not output valid JSON. Please check server-side console logs for more details on the raw and processed response."
+          );
         }
         
-        console.log("Attempting to parse final derived JSON from Cerebras (first 500 chars):", finalJsonString.substring(0,500));
-        try {
-            const parsedForValidation = JSON.parse(finalJsonString);
-            // Add a check for the root structure
-            if (typeof parsedForValidation.name !== 'string' || !Array.isArray(parsedForValidation.children)) {
-               console.warn("Extracted JSON from Cerebras does not have the expected root structure (name: string, children: array). Parsed (partial):", finalJsonString.substring(0, 300));
-                // Don't throw here, let page.tsx handle it for user display consistency
-            }
+        try { // Validate the extracted JSON
+            JSON.parse(finalJsonString);
         } catch (e: any) {
-            console.error("The final derived JSON string from Cerebras is invalid. Derived string (partial):", finalJsonString.substring(0,300), "Error:", e.message);
+            console.error(`The final derived JSON string from Cerebras is invalid. Derived string (partial):`, finalJsonString.substring(0,300), "Error:", e.message);
             throw new Error(`The AI response from Cerebras, after processing, was not valid JSON. Extracted segment (partial for debugging): ${finalJsonString.substring(0, 200)}. Original error: ${e.message}`);
         }
-        return { treeData: finalJsonString }; // No usage data from Cerebras SDK stream
+        return { treeData: finalJsonString }; 
 
     } catch (error: any) {
         console.error('Error calling Cerebras API or processing its response:', error);
@@ -424,7 +432,8 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
         if (error instanceof Error && (
             error.message.startsWith("Cerebras API returned an empty response") || 
             error.message.includes("did not yield a parsable JSON string") ||
-            error.message.includes("was not valid JSON")
+            error.message.includes("was not valid JSON") ||
+            error.message.includes("Cerebras API Error: The model's response could not be processed") 
             )) {
             throw error; 
         }
@@ -434,3 +443,4 @@ export async function generateSubjectTree(input: GenerateSubjectTreeInput): Prom
     throw new Error(`Unsupported API provider: ${apiProvider}`);
   }
 }
+
