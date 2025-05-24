@@ -199,9 +199,9 @@ export async function generateSubjectTree(
       
       // Use the meta-llama model as it's powerful, but omit response_format.json_schema
       // because the Cerebras provider (when targeted for this model) doesn't support recursive schemas.
-      const modelToUse = "meta-llama/llama-3.3-70b-instruct"; 
+      const modelToUse = "qwen/qwen3-32b"; 
       // Use the passed openRouterSpecificProvider, defaulting to "Cerebras" if not specified.
-      const effectiveORProvider = openRouterSpecificProvider || "Cerebras";
+      const effectiveORProvider = openRouterSpecificProvider || "deepinfra";
       const providerConfig = { "only": [effectiveORProvider] };
 
       const requestPayload = {
@@ -273,8 +273,8 @@ export async function generateSubjectTree(
         ],
         model: modelToUse,
         stream: true,
-        max_completion_tokens: 4096, // Standard max tokens for Cerebras, adjust if needed
-        temperature: 0.2, // Consistent low temperature
+        max_completion_tokens: 16382, // Standard max tokens for Cerebras, adjust if needed
+        temperature: 0.7, // Consistent low temperature
         top_p: 0.95
       });
 
