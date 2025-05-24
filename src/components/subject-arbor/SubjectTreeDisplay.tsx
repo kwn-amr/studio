@@ -43,7 +43,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
   };
 
   const generateMarkdown = (node: TreeNodeData, level = 0): string => {
-    let markdown = `${'  '.repeat(level)}- ${node.name}${node.description ? `_(${node.description})_` : ''}\n`;
+    let markdown = `${'  '.repeat(level)}- ${node.name}${node.description ? ` _(${node.description.trim()})_` : ''}\n`;
     if (node.children && node.children.length > 0) {
       for (const child of node.children) {
         markdown += generateMarkdown(child, level + 1);
@@ -120,7 +120,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
                 </ul>
               </ScrollArea>
             </TabsContent>
-            <TabsContent value="graph" className={`flex-grow overflow-hidden ${commonHeightClass}`}>
+            <TabsContent value="graph" className={`flex-grow ${commonHeightClass}`}> {/* Removed overflow-hidden */}
               <D3SubjectGraph 
                 treeData={treeData} 
                 fieldOfStudy={fieldOfStudy || 'subject'} 
@@ -134,5 +134,3 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenera
     </Card>
   );
 }
-
-    
