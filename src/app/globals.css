@@ -80,7 +80,7 @@ body {
     --muted: 260 15% 20%;
     --muted-foreground: 250 60% 70%; /* Lighter muted text */
 
-    --accent: 220 83% 70%; /* Calm Blue #76A0F2 */
+    --accent: 220 83% 70%; /* Calm Blue #A076F2 was used for light, use same for dark */
     --accent-foreground: 220 25% 15%; /* Darker for contrast on accent */
 
     --destructive: 0 62.8% 30.6%;
@@ -124,45 +124,59 @@ body {
 }
 
 /* D3 Graph Styles */
-.node circle {
-  fill: hsl(var(--card)); /* Use card background for nodes */
+.node circle.node-main-circle { /* Target main circle specifically */
+  fill: hsl(var(--card)); 
   stroke: hsl(var(--primary));
   stroke-width: 1.5px;
   cursor: pointer;
   transition: fill 0.2s ease, stroke 0.2s ease, r 0.2s ease;
 }
 
-.node circle.collapsed {
-  fill: hsl(var(--primary-foreground)); /* Lighter fill for collapsed, distinct from expanded */
+.node circle.node-main-circle.collapsed {
+  fill: hsl(var(--primary-foreground)); 
   stroke: hsl(var(--primary));
 }
-.node circle.expanded {
-  fill: hsl(var(--background)); /* Background color for expanded nodes */
+.node circle.node-main-circle.expanded {
+  fill: hsl(var(--background)); 
   stroke: hsl(var(--primary));
 }
 
-.node circle.node-leaf {
+.node circle.node-main-circle.node-leaf {
   fill: hsl(var(--accent));
   stroke: hsl(var(--accent-foreground));
 }
 
-.node circle.hovered {
+.node circle.node-main-circle.hovered {
   stroke-width: 2.5px;
-  stroke: hsl(var(--ring)); /* Ring color on hover */
-  r: calc(var(--node-radius) + 2px); /* Slightly larger on hover */
+  stroke: hsl(var(--ring)); 
+  r: calc(var(--node-radius) + 2px); 
 }
+
+.node .generate-more-group path { /* Style for the PlusCircle path */
+  stroke: hsl(var(--primary));
+  fill: hsl(var(--background));
+  transition: fill 0.2s ease, stroke 0.2s ease;
+}
+.node .generate-more-group:hover path {
+  stroke: hsl(var(--ring));
+  fill: hsl(var(--accent));
+}
+.node .generate-more-group .loader-icon path { /* Style for the loader icon path */
+    fill: hsl(var(--primary)); /* Or any color you prefer for the spinning loader */
+}
+
 
 .node text {
   font-family: var(--font-geist-sans), sans-serif;
-  font-size: 11px; /* Slightly smaller for potentially long names */
+  font-size: 11px; 
   fill: hsl(var(--foreground));
-  paint-order: stroke; /* Ensure stroke is behind fill for halo */
+  paint-order: stroke; 
   stroke: hsl(var(--background));
-  stroke-width: 3px; /* Halo width for better readability */
+  stroke-width: 3px; 
   stroke-linecap: butt;
   stroke-linejoin: miter;
-  pointer-events: none; /* Text should not block mouse events on the circle */
-  dominant-baseline: middle; /* Align text vertically */
+  pointer-events: none; 
+  dominant-baseline: middle; 
 }
 
 .link {
@@ -184,3 +198,18 @@ body {
      Additional static styles can go here if needed. */
 }
 
+/* Animation for loader icon */
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+    

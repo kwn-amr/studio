@@ -4,9 +4,9 @@
 import * as React from 'react';
 import type { TreeNodeData } from '@/types';
 import { TreeNode } from './TreeNode';
-import { D3SubjectGraph } from './D3SubjectGraph';
+import { D3SubjectGraph, type D3HierarchyNode } from './D3SubjectGraph'; // Import D3HierarchyNode
 import { Button } from '@/components/ui/button';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,9 +15,19 @@ interface SubjectTreeDisplayProps {
   treeData: TreeNodeData | null;
   fieldOfStudy: string | null;
   isLoading: boolean;
+  onGenerateMoreChildren: (targetNodePath: string[], fieldOfStudy: string) => Promise<void>;
 }
 
-export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: SubjectTreeDisplayProps) {
+export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading, onGenerateMoreChildren }: SubjectTreeDisplayProps) {
+  
+  const handleD3GenerateMore = async (targetNode: D3HierarchyNode, currentFieldOfStudy: string) => {
+    if (!targetNode || !currentFieldOfStudy) return;
+    // Construct path to the node. D3 node's ancestors include itself, so we reverse and take names.
+    // Path is from root to target.
+    const path = targetNode.ancestors().map(n => n.data.name).reverse();
+    await onGenerateMoreChildren(path, currentFieldOfStudy);
+  };
+
   const handleExportJson = () => {
     if (!treeData) return;
     const jsonString = JSON.stringify(treeData, null, 2);
@@ -33,7 +43,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: Subjec
   };
 
   const generateMarkdown = (node: TreeNodeData, level = 0): string => {
-    let markdown = `${'  '.repeat(level)}- ${node.name}\n`;
+    let markdown = `${'  '.repeat(level)}- ${node.name}${node.description ? `_(${node.description})_` : ''}\n`;
     if (node.children && node.children.length > 0) {
       for (const child of node.children) {
         markdown += generateMarkdown(child, level + 1);
@@ -80,8 +90,15 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: Subjec
           </div>
         )}
       </CardHeader>
-      <CardContent className="flex-grow p-0 flex flex-col">
-        {isLoading && <p className="text-muted-foreground text-center py-10">Generating tree, please wait...</p>}
+      <CardContent className="flex-grow p-0 flex flex-col relative">
+        {isLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 z-20">
+                <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+                <p className="text-muted-foreground text-center">
+                    {fieldOfStudy ? `Generating tree for "${fieldOfStudy}"...` : "Generating tree, please wait..."}
+                </p>
+            </div>
+        )}
         {!isLoading && !treeData && (
           <div className="flex flex-col items-center justify-center h-full text-center p-6">
             <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-network mb-4 text-muted-foreground opacity-50" data-ai-hint="tree diagram"><path d="M16 5C16 3.34315 14.6569 2 13 2C11.3431 2 10 3.34315 10 5C10 6.65685 11.3431 8 13 8C14.6569 8 16 6.65685 16 5Z"/><path d="M12 12.5L12 8"/><path d="M5 19C5 17.3431 6.34315 16 8 16C9.65685 16 11 17.3431 11 19C11 20.6569 9.65685 22 8 22C6.34315 22 5 20.6569 5 19Z"/><path d="M13 19C13 17.3431 14.3431 16 16 16C17.6569 16 19 17.3431 19 19C19 20.6569 17.6569 22 16 22C14.3431 22 13 20.6569 13 19Z"/><path d="M12 12.5L8 16"/><path d="M12 12.5L16 16"/></svg>
@@ -90,7 +107,7 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: Subjec
             </p>
           </div>
         )}
-        {treeData && !isLoading && (
+        {treeData && ( // Render tabs even if isLoading is true for "generating more"
           <Tabs defaultValue="list" className="w-full flex flex-col flex-grow p-6 pt-2">
             <TabsList className="mb-4 self-start">
               <TabsTrigger value="list">List View</TabsTrigger>
@@ -104,7 +121,12 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: Subjec
               </ScrollArea>
             </TabsContent>
             <TabsContent value="graph" className={`flex-grow overflow-hidden ${commonHeightClass}`}>
-              <D3SubjectGraph treeData={treeData} fieldOfStudy={fieldOfStudy || 'subject'} />
+              <D3SubjectGraph 
+                treeData={treeData} 
+                fieldOfStudy={fieldOfStudy || 'subject'} 
+                onGenerateMoreChildren={(d3Node) => handleD3GenerateMore(d3Node, fieldOfStudy || 'Unknown Field')}
+                isProcessingAction={isLoading && !fieldOfStudy} // Pass down if main generation is happening
+              />
             </TabsContent>
           </Tabs>
         )}
@@ -112,3 +134,5 @@ export function SubjectTreeDisplay({ treeData, fieldOfStudy, isLoading }: Subjec
     </Card>
   );
 }
+
+    
