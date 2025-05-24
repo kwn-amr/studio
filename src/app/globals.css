@@ -155,10 +155,12 @@ body {
 .node .generate-more-group {
   opacity: 0;
   transition: opacity 0.2s ease-in-out;
+  pointer-events: none; /* Initially hidden and non-interactive */
 }
 
 .node .generate-more-group.generate-more-visible {
   opacity: 1;
+  pointer-events: auto; /* Make it clickable when visible */
 }
 
 .node .generate-more-group .plus-icon-group path { /* Style for the PlusCircle path */
@@ -220,3 +222,4 @@ body {
     transform: rotate(360deg);
   }
 }
+
