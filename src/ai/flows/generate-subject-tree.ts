@@ -135,12 +135,13 @@ IMPORTANT RULES FOR YOUR RESPONSE:
     -   "name": A string representing the name of the subject, sub-discipline, or topic. All string values must be properly JSON escaped (e.g., quotes within strings must be escaped as \\").
     -   "description": A string providing a brief, one-sentence description of this specific subject, sub-discipline, or topic. This description should be concise and informative.
     -   "children": An array of child node objects. If a node has no sub-topics, its "children" array MUST be empty (e.g., []).
-6.  The tree should be highly detailed, featuring multiple levels of hierarchy. It should span from foundational concepts to advanced or cutting-edge research topics.
-7.  DO NOT include ANY text outside of the JSON object. No explanations, no apologies, no markdown formatting like \`\`\`json.
-8.  The final output MUST start with "{" and end with "}". No leading or trailing characters, including whitespace or newlines outside the main JSON structure.
-9.  Generate the JSON in a top-down manner.
-10. DO NOT return a JSON array as the root element. It MUST be a JSON object.
-11. DO NOT include any "..." or truncated content within node names, descriptions, or children arrays. All sub-trees should be fully represented.
+6.  The tree MUST be highly detailed and comprehensive, featuring multiple levels of hierarchy (aim for at least 3-5 levels deep where appropriate). It should span from foundational concepts to advanced or cutting-edge research topics.
+7.  Node descriptions MUST be very concise (a single, short sentence) to ensure computational resources are prioritized for generating a deep and detailed tree structure.
+8.  DO NOT include ANY text outside of the JSON object. No explanations, no apologies, no markdown formatting like \`\`\`json.
+9.  The final output MUST start with "{" and end with "}". No leading or trailing characters, including whitespace or newlines outside the main JSON structure.
+10. Generate the JSON in a top-down manner.
+11. DO NOT return a JSON array as the root element. It MUST be a JSON object.
+12. DO NOT include any "..." or truncated content within node names, descriptions, or children arrays. All sub-trees should be fully represented.
 
 Example of the required JSON tree structure:
 {
@@ -238,7 +239,7 @@ export async function generateSubjectTree(
                 errorMessage += ` Details: ${errorData.error.message}`;
                 if (errorData.error.message.includes("Provider returned error")) {
                     errorMessage = `OpenRouter API error (${response.status}): Provider (${effectiveORProvider}) returned error for model ${modelToUse}. Raw provider message: ${errorData.error.metadata?.raw || 'N/A'}`;
-                } else if (errorData.error.code === 'invalid_request_error' && errorData.error.param === 'response_format') {
+                } else if (errorData.error.code === 'invalid_request_error' && errorData.error.param === 'response_format') { // This might not be hit anymore as response_format is removed for this path
                    errorMessage = `OpenRouter API error: Problem with response_format (model: ${modelToUse}, provider: ${effectiveORProvider}). Details: ${errorData.error.message}`;
               }
             }
@@ -291,7 +292,7 @@ export async function generateSubjectTree(
       // Note: Cerebras SDK streaming might not easily provide token usage for the whole request.
       // usageData will remain undefined for Cerebras in this implementation.
     } else {
-      const exhaustiveCheck: never = apiProvider;
+      const exhaustiveCheck: never = apiProvider; // Should not happen
       throw new Error(`Unsupported API provider: ${exhaustiveCheck}`);
     }
 
@@ -332,4 +333,3 @@ export async function generateSubjectTree(
     throw new Error(`An unexpected error occurred while generating subject tree via ${currentApiDesc}: ${error.message}`);
   }
 }
-
