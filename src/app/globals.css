@@ -152,17 +152,26 @@ body {
   r: calc(var(--node-radius) + 2px); 
 }
 
-.node .generate-more-group path { /* Style for the PlusCircle path */
+.node .generate-more-group {
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.node .generate-more-group.generate-more-visible {
+  opacity: 1;
+}
+
+.node .generate-more-group .plus-icon-group path { /* Style for the PlusCircle path */
   stroke: hsl(var(--primary));
   fill: hsl(var(--background));
   transition: fill 0.2s ease, stroke 0.2s ease;
 }
-.node .generate-more-group:hover path {
+.node .generate-more-group:hover .plus-icon-group path {
   stroke: hsl(var(--ring));
   fill: hsl(var(--accent));
 }
-.node .generate-more-group .loader-icon path { /* Style for the loader icon path */
-    fill: hsl(var(--primary)); /* Or any color you prefer for the spinning loader */
+.node .generate-more-group .loader-icon-group path { /* Style for the loader icon path */
+    fill: hsl(var(--primary)); 
 }
 
 
@@ -211,5 +220,3 @@ body {
     transform: rotate(360deg);
   }
 }
-
-    
